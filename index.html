@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sinkhole City">
+<meta name="theme-color" content="#9fd3f5">
+<title>Sinkhole City</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #10202e;
+    --panel: rgba(16, 32, 46, 0.72);
+    --line: rgba(255, 255, 255, 0.16);
+    --accent: #22d3ee;
+    --sl: max(16px, env(safe-area-inset-left)); --sr: max(16px, env(safe-area-inset-right));
+    --st: max(16px, env(safe-area-inset-top)); --sb: max(16px, env(safe-area-inset-bottom));
+    --warm: #ffd23f;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; touch-action: none; -webkit-touch-callout: none; -webkit-text-size-adjust: 100%; background: #9fd3f5; font-family: "Fredoka", "Trebuchet MS", "Segoe UI", sans-serif; color: #fff; user-select: none; -webkit-user-select: none; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .hidden { display: none !important; }
+
+  /* labels / popups */
+  #tags, #pops { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+  .tag { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 6px; padding: 2px 9px 2px 6px; border-radius: 99px; background: rgba(10, 20, 30, 0.55); font-size: 13px; font-weight: 600; white-space: nowrap; will-change: transform; }
+  .tag.me { background: rgba(255, 255, 255, 0.9); color: var(--ink); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; box-shadow: 0 0 0 2px rgba(255,255,255,.55); }
+  .pop { position: absolute; transform: translate(-50%, -50%); font-weight: 700; font-size: 22px; color: var(--warm); text-shadow: 0 2px 0 rgba(0,0,0,.45), 0 0 8px rgba(0,0,0,.3); animation: floatUp .9s ease-out forwards; }
+  .pop.big { font-size: 32px; color: #fff176; }
+  @keyframes floatUp { 0% { opacity: 0; margin-top: 0; scale: .6; } 15% { opacity: 1; scale: 1.1; } 100% { opacity: 0; margin-top: -64px; scale: 1; } }
+
+  /* HUD */
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; backdrop-filter: blur(6px); box-shadow: 0 6px 22px rgba(0,0,0,.18); }
+  #stats { position: absolute; left: var(--sl); top: var(--st); padding: 10px 18px; min-width: 150px; }
+  #stats .lbl { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; opacity: .7; }
+  #score { font-size: 34px; font-weight: 700; line-height: 1; margin: 2px 0 6px; font-variant-numeric: tabular-nums; }
+  #size { font-size: 16px; font-weight: 600; color: var(--accent); }
+  #timer { position: absolute; left: 50%; top: var(--st); transform: translateX(-50%); padding: 6px 22px; font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #timer.low { color: #ff6b6b; animation: pulse .6s infinite alternate; }
+  @keyframes pulse { to { transform: translateX(-50%) scale(1.1); } }
+  #lb { position: absolute; right: var(--sr); top: var(--st); padding: 10px 14px; width: 210px; }
+  #lb h3 { margin: 0 0 6px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; opacity: .7; font-weight: 600; }
+  ol { list-style: none; margin: 0; padding: 0; }
+  ol li { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-radius: 8px; font-size: 14px; font-weight: 600; }
+  ol li.me { background: rgba(255,255,255,.92); color: var(--ink); }
+  ol li .rk { width: 16px; text-align: right; opacity: .7; }
+  ol li .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  ol li .sc { font-variant-numeric: tabular-nums; }
+  #minimap { position: absolute; right: var(--sr); bottom: var(--sb); width: 150px; height: 150px; border-radius: 14px; border: 1px solid var(--line); }
+  #help { position: absolute; left: var(--sl); bottom: var(--sb); padding: 8px 14px; font-size: 13px; opacity: .85; }
+  #banner { position: fixed; left: 50%; top: 32%; transform: translate(-50%, -50%); padding: 14px 34px; font-size: 34px; font-weight: 700; text-align: center; }
+  #banner small { display: block; font-size: 15px; font-weight: 400; opacity: .8; }
+
+  /* virtual joystick (touch) */
+  #joy { position: fixed; width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%; background: rgba(255,255,255,.18); border: 2px solid rgba(255,255,255,.5); pointer-events: none; }
+  #joy-knob { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: rgba(255,255,255,.85); }
+
+  /* multiplayer */
+  .mp { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .mp-title { font-weight: 600; margin-bottom: 10px; }
+  .mp-title small { font-weight: 400; opacity: .6; font-size: 12px; }
+  .mp button.ghost { width: 100%; }
+  .join { display: flex; gap: 10px; margin-top: 10px; }
+  .join input { flex: 1; min-width: 0; text-transform: uppercase; letter-spacing: .25em; padding: 10px 8px; font-size: 18px; }
+  .join button { width: auto !important; flex: none; }
+  #net-status { min-height: 18px; margin-top: 10px; font-size: 14px; opacity: .9; }
+  #net-status.bad { color: #ff8b8b; }
+  button:disabled { opacity: .5; pointer-events: none; }
+  button.mini { font-size: 13px; padding: 6px 12px; border-radius: 10px; }
+  #room { position: fixed; left: 50%; top: calc(var(--st) + 62px); transform: translateX(-50%); padding: 6px 8px 6px 14px; font-size: 14px; display: flex; align-items: center; gap: 8px; white-space: nowrap; z-index: 3; pointer-events: auto; }
+  #room .lbl { text-transform: uppercase; letter-spacing: .12em; font-size: 11px; opacity: .7; }
+  #room b { font-size: 20px; letter-spacing: .18em; }
+  #room-state { opacity: .8; }
+  #toast { position: fixed; left: 50%; bottom: calc(var(--sb) + 8px); transform: translateX(-50%); padding: 10px 20px; font-weight: 600; z-index: 5; max-width: 90vw; text-align: center; }
+  #over-wait { margin: 14px 0 0; opacity: .85; }
+
+  /* overlays */
+  .overlay { position: fixed; inset: 0; display: grid; place-items: center; overflow-y: auto; touch-action: pan-y; background: radial-gradient(ellipse at center, rgba(10,20,34,.35), rgba(10,20,34,.75)); padding: 16px; }
+  .panel { width: min(440px, 100%); padding: 28px 28px 24px; text-align: center; border-radius: 26px; background: linear-gradient(160deg, rgba(23,44,64,.94), rgba(10,22,36,.94)); border: 1px solid var(--line); box-shadow: 0 20px 60px rgba(0,0,0,.45); }
+  .logo { font-size: clamp(38px, 9vw, 54px); font-weight: 700; line-height: 1; letter-spacing: .01em; margin: 0; }
+  .logo span { color: var(--accent); }
+  .tagline { margin: 8px 0 20px; opacity: .8; font-size: 16px; }
+  .hole-art { width: 86px; height: 40px; margin: 0 auto 14px; border-radius: 50%; background: radial-gradient(ellipse at center, #000 40%, #0b1722 65%, transparent 70%); box-shadow: 0 0 0 5px #fff, 0 0 24px 6px rgba(34,211,238,.55); }
+  input[type=text] { width: 100%; padding: 13px 16px; font: inherit; font-size: 18px; font-weight: 600; text-align: center; color: #fff; background: rgba(255,255,255,.08); border: 2px solid var(--line); border-radius: 14px; outline: none; user-select: text; -webkit-user-select: text; }
+  input[type=text]:focus { border-color: var(--accent); }
+  button { touch-action: manipulation; font: inherit; font-weight: 700; font-size: 20px; padding: 13px 28px; border: 0; border-radius: 14px; cursor: pointer; color: var(--ink); background: linear-gradient(#ffe066, #ffc02e); box-shadow: 0 5px 0 #c98f10; transition: transform .08s; }
+  button:hover { transform: translateY(-1px); }
+  button:active { transform: translateY(3px); box-shadow: 0 2px 0 #c98f10; }
+  button.ghost { background: rgba(255,255,255,.1); color: #fff; box-shadow: none; font-size: 16px; padding: 11px 20px; }
+  .row { display: flex; gap: 12px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
+  #play { width: 100%; margin-top: 14px; }
+  .how { margin: 20px 0 0; font-size: 14px; line-height: 1.55; opacity: .85; text-align: left; }
+  .how b { color: var(--warm); }
+  kbd { display: inline-block; min-width: 22px; padding: 0 6px; border-radius: 6px; background: rgba(255,255,255,.14); border: 1px solid var(--line); font: inherit; font-size: 12px; text-align: center; }
+  #over-board { text-align: left; margin-top: 14px; max-height: 40vh; overflow: auto; }
+  #over-board li { font-size: 16px; padding: 5px 10px; }
+  #over h2 { margin: 0; font-size: 42px; }
+  #over-sub { margin: 6px 0 0; opacity: .85; }
+  .touch-only { display: none; }
+  body.touch .touch-only { display: inline; }
+  body.touch .kb-only { display: none; }
+  body:not(.ready) .overlay { opacity: 0; }
+
+  @media (max-width: 640px) {
+    #lb { width: 170px; padding: 8px 10px; }
+    ol li { font-size: 12px; padding: 2px 4px; }
+    #minimap { width: 110px; height: 110px; }
+    #help { display: none; }
+    #score { font-size: 26px; }
+    #stats { min-width: 110px; padding: 8px 12px; }
+    #timer { font-size: 22px; padding: 4px 14px; top: 10px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="tags"></div>
+<div id="pops"></div>
+
+<div id="hud" class="hidden">
+  <div id="stats" class="card"><div class="lbl">Score</div><div id="score">0</div><div class="lbl">Hole size</div><div id="size">1.5 m</div></div>
+  <div id="timer" class="card">3:00</div>
+  <div id="lb" class="card"><h3>Leaderboard</h3><ol id="board"></ol></div>
+  <canvas id="minimap" width="300" height="300"></canvas>
+  <div id="help" class="card"><span class="kb-only"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows or hold the mouse to move &nbsp;·&nbsp; <kbd>M</kbd> mute</span><span class="touch-only">Touch and drag anywhere to steer</span></div>
+</div>
+
+<div id="room" class="card hidden"><span class="lbl">Room</span> <b id="room-code">…</b> <span id="room-state"></span> <button id="room-copy" class="ghost mini">Copy invite link</button></div>
+<div id="toast" class="card hidden"></div>
+<div id="banner" class="card hidden"><span id="banner-text"></span><small>Respawning…</small></div>
+<div id="joy" class="hidden"><div id="joy-knob"></div></div>
+
+<div id="menu" class="overlay">
+  <div class="panel">
+    <div class="hole-art"></div>
+    <h1 class="logo">Sinkhole <span>City</span></h1>
+    <p class="tagline">Swallow the whole town. Don't get swallowed.</p>
+    <input id="name" type="text" maxlength="14" placeholder="Your name" autocomplete="off">
+    <button id="play">Play solo</button>
+    <div class="mp">
+      <div class="mp-title">Play with a friend <small>(same bots, same city)</small></div>
+      <button id="host" class="ghost">Host a room</button>
+      <div class="join"><input id="code" type="text" maxlength="5" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false"><button id="join" class="ghost">Join</button></div>
+      <div id="net-status"></div>
+    </div>
+    <p class="how">
+      <b class="touch-only">Touch &amp; drag</b><b class="kb-only">WASD / hold mouse</b> to move.<br>
+      <b>Eat</b> people, trees, cars, houses and even skyscrapers — the more you swallow the <b>bigger</b> your hole grows.<br>
+      <b>Careful:</b> a bigger hole can swallow <i>you</i>. Eat smaller holes to steal their points!
+    </p>
+  </div>
+</div>
+
+<div id="over" class="overlay hidden">
+  <div class="panel">
+    <h2 id="over-title">Time's up!</h2>
+    <p id="over-sub"></p>
+    <ol id="over-board"></ol>
+    <p id="over-wait" class="hidden">Waiting for the host to start the next round…</p>
+    <div class="row"><button id="again">Play again</button><button id="menu-btn" class="ghost">Menu</button></div>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>

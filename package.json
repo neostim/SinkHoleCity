@@ -1,0 +1,14 @@
+{
+  "name": "sinkhole-city",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A hole.io-style 3D game: swallow the city with your growing hole.",
+  "scripts": {
+    "build": "esbuild src/main.js --bundle --minify --format=iife --outfile=game.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "peerjs": "^1.5.5",
+    "three": "^0.160.0"
+  }
+}

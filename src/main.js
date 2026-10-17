@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { World, WORLD, MAX_HOLES } from './world.js';
+import { World, WORLD, MAX_HOLES, ROADS } from './world.js';
 import { hostRoom, joinRoom, normalizeCode } from './net.js';
 
 /* ====================================================================== */
@@ -13,7 +13,7 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', 
 const ROUND_TIME = 180;
 const START_R = 1.5;
 const MAX_R = 18;
-const BOT_COUNT = 7;
+const BOT_COUNT = 11; // the city is 4x bigger now, so more bots to fill it
 const SNAP_INTERVAL = 0.05; // host -> guest state updates (20 Hz)
 const INPUT_INTERVAL = 1 / 30; // guest -> host steering updates
 
@@ -185,7 +185,7 @@ class Hole {
 /*  Entities                                                              */
 /* ====================================================================== */
 const BOT_NAMES = ['Blobzilla', 'Voidy', 'Sinky', 'DeepDive', 'Pitfall', 'Gulper', 'Abyss', 'Maw', 'Chomp', 'DarkMatter', 'Nom', 'Crater'];
-const BOT_COLORS = [0xff5964, 0xffa630, 0xf7e04c, 0x6ede6e, 0x35c9e8, 0x7f7bff, 0xd36bff, 0x3ee6b0, 0xff8a5c, 0xb8f23d];
+const BOT_COLORS = [0xff5964, 0xffa630, 0xf7e04c, 0x6ede6e, 0x35c9e8, 0x7f7bff, 0xd36bff, 0x3ee6b0, 0xff8a5c, 0xb8f23d, 0x4dd0ff, 0xff4d6d];
 
 // Slots: 0 = host / solo player, 1 = remote friend (empty unless someone joined), 2.. = bots.
 const human0 = new Hole('You', 0x22d3ee, true);
@@ -234,13 +234,13 @@ world.onSpawn = (o) => {
 };
 
 function randomSpawn() {
-  for (let tries = 0; tries < 30; tries++) {
+  for (let tries = 0; tries < 40; tries++) {
     // spawn on a street so nobody starts hidden under a skyscraper
-    const L = [-72, -24, 24, 72][(Math.random() * 4) | 0], t = rand(-100, 100);
+    const L = ROADS[(Math.random() * ROADS.length) | 0], t = rand(-WORLD + 20, WORLD - 20);
     const [x, z] = Math.random() < 0.5 ? [L, t] : [t, L];
-    if (holes.every((h) => !h.alive || Math.hypot(h.x - x, h.z - z) > 35)) return [x, z];
+    if (holes.every((h) => !h.alive || Math.hypot(h.x - x, h.z - z) > 60)) return [x, z];
   }
-  return [rand(-100, 100), rand(-100, 100)];
+  return [rand(-WORLD + 20, WORLD - 20), rand(-WORLD + 20, WORLD - 20)];
 }
 
 function setLocal(h) {
@@ -770,7 +770,7 @@ function drawMinimap() {
   mmc.fillStyle = 'rgba(20,28,40,0.55)';
   mmc.fillRect(0, 0, W, W);
   mmc.fillStyle = 'rgba(255,255,255,0.14)';
-  for (const L of [-72, -24, 24, 72]) { mmc.fillRect((L + WORLD - 3) * s, 0, 6 * s, W); mmc.fillRect(0, (L + WORLD - 3) * s, W, 6 * s); }
+  for (const L of ROADS) { mmc.fillRect((L + WORLD - 3) * s, 0, 6 * s, W); mmc.fillRect(0, (L + WORLD - 3) * s, W, 6 * s); }
   for (const h of holes) {
     if (!h.alive) continue;
     const x = (h.x + WORLD) * s, y = (h.z + WORLD) * s, r = Math.max(3, h.r * s);

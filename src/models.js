@@ -344,6 +344,212 @@ function waterTower() {
   return out(b, 2.9, 12.2);
 }
 
+
+/* ---------- people helper (standing figure at an x/z offset) ---------- */
+function figure(b, ox, oz, o = {}) {
+  const skin = o.skin || pick(SKIN), shirt = o.shirt || pick(SHIRT), pants = o.pants || pick(PANTS), hair = o.hair || pick(HAIR);
+  b.box(0.2, 0.8, 0.24, pants, ox - 0.11, 0, oz).box(0.2, 0.8, 0.24, pants, ox + 0.11, 0, oz)
+    .box(0.52, 0.72, 0.3, shirt, ox, 0.78, oz)
+    .sph(0.19, skin, ox, 1.68, oz)
+    .sph(0.2, hair, ox, 1.74, oz - 0.04, 0.7)
+    .box(0.13, 0.66, 0.15, shirt, ox - 0.34, 0.8, oz).box(0.13, 0.66, 0.15, shirt, ox + 0.34, 0.8, oz);
+}
+
+/* ---------- wheeled things ---------- */
+function motorcycle(withRider) {
+  const b = new B();
+  const col = pick(['#d62828', '#277da1', '#212529', '#f77f00', '#80b918', '#7b2cbf']);
+  b.wheel(0.36, 0.14, 0, 0.36, 0.78).wheel(0.36, 0.14, 0, 0.36, -0.78)
+    .box(0.4, 0.36, 0.55, '#3a3a3f', 0, 0.28, 0)
+    .box(0.32, 0.34, 0.9, col, 0, 0.58, 0.1)
+    .box(0.26, 0.12, 0.62, '#1c1c1c', 0, 0.84, -0.3)
+    .box(0.08, 0.72, 0.08, '#9aa0a6', 0, 0.3, 0.8)
+    .box(0.74, 0.07, 0.07, '#2a2a2a', 0, 1.02, 0.6)
+    .box(0.22, 0.2, 0.12, '#fff6c0', 0, 0.82, 0.95)
+    .box(0.12, 0.12, 0.5, '#8d8d94', 0.26, 0.2, -0.45);
+  if (withRider) {
+    const jacket = pick(['#1d1d1f', '#c1121f', '#2a6fdb', '#f4a261']);
+    b.box(0.16, 0.5, 0.2, '#2b3a55', -0.24, 0.5, -0.15).box(0.16, 0.5, 0.2, '#2b3a55', 0.24, 0.5, -0.15)
+      .box(0.42, 0.62, 0.28, jacket, 0, 0.86, -0.3)
+      .box(0.12, 0.12, 0.62, jacket, -0.28, 1.15, 0.12).box(0.12, 0.12, 0.62, jacket, 0.28, 1.15, 0.12)
+      .sph(0.22, pick(['#ffffff', '#d62828', '#111111', '#ffd23f']), 0, 1.65, -0.22);
+  }
+  return out(b, 1.25, 1.9);
+}
+
+function bicycle(withRider) {
+  const b = new B();
+  const col = pick(['#e63946', '#2a9d8f', '#457b9d', '#f4a261', '#9b5de5', '#2b2d42']);
+  for (const z of [-0.55, 0.55]) b.push(new THREE.TorusGeometry(0.34, 0.035, 6, 16), '#1a1a1a', 0, 0.37, z, 0, Math.PI / 2, 0);
+  b.box(0.05, 0.05, 0.9, col, 0, 0.66, 0)
+    .box(0.05, 0.46, 0.05, col, 0, 0.42, -0.3)
+    .box(0.05, 0.56, 0.05, col, 0, 0.38, 0.52)
+    .box(0.05, 0.32, 0.05, '#222222', 0, 0.7, 0.5)
+    .box(0.5, 0.04, 0.04, '#222222', 0, 1.0, 0.5)
+    .box(0.13, 0.05, 0.26, '#222222', 0, 0.9, -0.3);
+  if (withRider) {
+    const shirt = pick(SHIRT);
+    b.box(0.14, 0.6, 0.16, pick(PANTS), -0.14, 0.4, -0.2).box(0.14, 0.6, 0.16, pick(PANTS), 0.14, 0.4, -0.2)
+      .box(0.38, 0.55, 0.25, shirt, 0, 0.98, -0.12)
+      .box(0.1, 0.1, 0.5, shirt, -0.22, 1.1, 0.16).box(0.1, 0.1, 0.5, shirt, 0.22, 1.1, 0.16)
+      .sph(0.17, pick(SKIN), 0, 1.68, -0.02)
+      .sph(0.19, pick(['#d62828', '#ffd23f', '#2a9d8f', '#ffffff']), 0, 1.74, -0.04, 0.7);
+  }
+  return out(b, 1.0, 1.9);
+}
+
+function scooter() {
+  const b = new B();
+  const col = pick(['#e63946', '#2a9d8f', '#ffbe0b', '#3a86ff', '#8338ec']);
+  const shirt = pick(SHIRT);
+  b.box(0.3, 0.06, 0.95, col, 0, 0.14, 0)
+    .wheel(0.11, 0.06, 0, 0.11, 0.55).wheel(0.11, 0.06, 0, 0.11, -0.55)
+    .box(0.05, 1.0, 0.05, '#9aa0a6', 0, 0.15, 0.52)
+    .box(0.5, 0.04, 0.04, '#222222', 0, 1.14, 0.52)
+    .box(0.14, 0.8, 0.16, pick(PANTS), -0.11, 0.18, -0.1).box(0.14, 0.8, 0.16, pick(PANTS), 0.11, 0.18, -0.1)
+    .box(0.4, 0.62, 0.25, shirt, 0, 0.98, -0.1)
+    .box(0.1, 0.1, 0.55, shirt, -0.23, 1.28, 0.2).box(0.1, 0.1, 0.55, shirt, 0.23, 1.28, 0.2)
+    .sph(0.18, pick(SKIN), 0, 1.8, -0.08)
+    .sph(0.19, pick(HAIR), 0, 1.86, -0.12, 0.7);
+  return out(b, 0.65, 2.0);
+}
+
+function dogWalker() {
+  const b = new B();
+  const dog = pick(['#8b5a2b', '#222222', '#f2efe6', '#c9a15a', '#6b6b6b']);
+  const dark = '#2a2a2a';
+  figure(b, 0, -0.55);
+  // the dog trots about a metre ahead of its owner, on a red leash
+  b.box(0.3, 0.3, 0.62, dog, 0, 0.32, 0.8)
+    .box(0.22, 0.22, 0.26, dog, 0, 0.5, 1.2)
+    .box(0.1, 0.1, 0.12, dark, 0, 0.46, 1.36)
+    .box(0.05, 0.12, 0.08, dark, -0.09, 0.66, 1.16).box(0.05, 0.12, 0.08, dark, 0.09, 0.66, 1.16)
+    .box(0.06, 0.06, 0.3, dog, 0, 0.5, 0.42)
+    .box(0.07, 0.24, 0.07, dog, -0.1, 0, 0.98).box(0.07, 0.24, 0.07, dog, 0.1, 0, 0.98)
+    .box(0.07, 0.24, 0.07, dog, -0.1, 0, 0.62).box(0.07, 0.24, 0.07, dog, 0.1, 0, 0.62)
+    .box(0.03, 0.03, 1.3, '#d33333', 0.2, 0.72, 0.28);
+  return out(b, 1.05, 1.9);
+}
+
+/* ---------- RX Gym (crossfit box) + equipment + athletes ---------- */
+export const SIGN = (() => {
+  const c = document.createElement('canvas');
+  c.width = 1024; c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#101114'; g.fillRect(0, 0, 1024, 256);
+  g.strokeStyle = '#e11d2e'; g.lineWidth = 12; g.strokeRect(10, 10, 1004, 236);
+  g.fillStyle = '#e11d2e'; g.fillRect(40, 40, 290, 176);
+  g.fillStyle = '#ffffff';
+  g.font = '900 150px "Arial Black", Impact, Arial, sans-serif';
+  g.textBaseline = 'middle'; g.textAlign = 'center';
+  g.fillText('RX', 185, 136);
+  g.textAlign = 'left';
+  g.fillText('GYM', 365, 128);
+  g.font = '700 34px Arial, sans-serif';
+  g.fillStyle = '#c9ccd1';
+  g.fillText('CROSSFIT  •  STRENGTH  •  CONDITIONING', 366, 218);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return {
+    geo: new THREE.PlaneGeometry(7.4, 1.85),
+    mat: new THREE.MeshBasicMaterial({ map: tex }),
+  };
+})();
+
+function gym() {
+  const b = new B();
+  const w = 12, d = 8, h = 6.4;
+  b.facade(w, h, d, '#7d828c', 0, 0, 0)
+    .box(w + 0.5, 0.35, d + 0.5, '#23262c', 0, h, 0)
+    .box(w + 0.08, 0.9, d + 0.08, '#d62828', 0, h - 1.45, 0)
+    // roll-up garage door with ribs + entrance door
+    .box(6, 3.4, 0.14, '#cfd2d8', -1.6, 0, d / 2 + 0.07)
+    .box(1.7, 2.6, 0.14, '#1c1c1f', 3.9, 0, d / 2 + 0.07);
+  for (let i = 1; i < 7; i++) b.box(6, 0.05, 0.16, '#8b8f97', -1.6, i * 0.48, d / 2 + 0.08);
+  b.box(2.6, 0.9, 1.4, '#9aa0a6', -3, h + 0.35, 0).box(1.6, 0.7, 1.2, '#9aa0a6', 2.5, h + 0.35, 1);
+  const o = out(b, Math.hypot(w, d) / 2, h + 1.4, 'bld');
+  o.sign = [0, h - 1.0, d / 2 + 0.12];
+  return o;
+}
+
+function pullupRig() {
+  const b = new B();
+  const fr = '#2b2b30';
+  b.box(0.16, 3.3, 0.16, fr, -2, 0, 0).box(0.16, 3.3, 0.16, fr, 2, 0, 0)
+    .box(0.14, 0.1, 1.5, fr, -2, 0, 0).box(0.14, 0.1, 1.5, fr, 2, 0, 0)
+    .box(4.2, 0.1, 0.1, '#b9bec7', 0, 3.1, 0).box(4.2, 0.08, 0.08, '#b9bec7', 0, 2.45, 0)
+    .box(4.16, 0.06, 0.06, fr, 0, 3.28, 0)
+    .box(0.1, 0.1, 1.2, '#d62828', -2, 1.6, 0).box(0.1, 0.1, 1.2, '#d62828', 2, 1.6, 0);
+  return out(b, 2.25, 3.4);
+}
+
+function squatRack() {
+  const b = new B();
+  const fr = '#2b2b30';
+  b.box(0.14, 2.3, 0.14, fr, -0.85, 0, -0.35).box(0.14, 2.3, 0.14, fr, 0.85, 0, -0.35)
+    .box(0.14, 2.3, 0.14, fr, -0.85, 0, 0.35).box(0.14, 2.3, 0.14, fr, 0.85, 0, 0.35)
+    .box(1.8, 0.1, 0.1, fr, 0, 2.2, -0.35).box(1.8, 0.1, 0.1, fr, 0, 2.2, 0.35)
+    .box(0.1, 0.1, 0.8, fr, -0.85, 0.05, 0).box(0.1, 0.1, 0.8, fr, 0.85, 0.05, 0)
+    .push(new THREE.CylinderGeometry(0.03, 0.03, 2.5, 8), '#b9bec7', 0, 1.55, -0.35, 0, 0, Math.PI / 2);
+  for (const sx of [-1, 1]) {
+    b.wheel(0.3, 0.09, sx * 1.0, 1.55, -0.35, '#d62828').wheel(0.26, 0.09, sx * 1.12, 1.55, -0.35, '#1c1c1f');
+  }
+  return out(b, 1.6, 2.4);
+}
+
+function kettlebell() {
+  const b = new B();
+  const col = pick(['#1c1c1f', '#d62828', '#2a6fdb', '#2a9d8f']);
+  b.sph(0.2, col, 0, 0.22, 0)
+    .box(0.05, 0.22, 0.05, col, -0.1, 0.36, 0).box(0.05, 0.22, 0.05, col, 0.1, 0.36, 0)
+    .box(0.25, 0.05, 0.05, col, 0, 0.55, 0);
+  return out(b, 0.3, 0.6);
+}
+
+function tire() {
+  const b = new B();
+  b.push(new THREE.TorusGeometry(0.62, 0.3, 8, 18), '#202024', 0, 0.3, 0, Math.PI / 2, 0, 0);
+  return out(b, 0.95, 0.62);
+}
+
+function plyoBox() {
+  const b = new B();
+  const col = pick(['#c8913a', '#d9a65a', '#b07a2c']);
+  b.box(0.9, 0.85, 0.7, col, 0, 0, 0).box(0.92, 0.06, 0.72, '#8a5a1f', 0, 0.8, 0).box(0.3, 0.2, 0.02, '#6b4410', 0, 0.35, 0.36);
+  return out(b, 0.65, 0.95);
+}
+
+function rower() {
+  const b = new B();
+  b.box(0.22, 0.12, 2.3, '#26262b', 0, 0.3, 0)
+    .box(0.3, 0.06, 0.34, '#4b4b52', 0, 0.42, 0.35)
+    .wheel(0.34, 0.14, 0, 0.62, -1.0, '#3a3a40')
+    .box(0.1, 0.4, 0.1, '#26262b', 0, 0.12, -0.95)
+    .box(0.1, 0.4, 0.1, '#26262b', 0, 0.12, 1.0)
+    .box(0.6, 0.05, 0.05, '#d62828', 0, 0.9, -0.85)
+    .box(0.4, 0.06, 0.2, '#26262b', 0, 0.36, 0.9);
+  return out(b, 1.35, 1.0);
+}
+
+function athlete() {
+  const b = new B();
+  const skin = pick(SKIN);
+  const top = pick(['#e11d2e', '#111111', '#ffffff', '#00bbf9', '#ffd23f', '#9b5de5', '#ff7b00']);
+  const shorts = pick(['#111111', '#2b3a55', '#e11d2e', '#444444']);
+  // tank top + shorts: bare arms and lower legs
+  b.box(0.2, 0.4, 0.24, skin, -0.11, 0, 0).box(0.2, 0.4, 0.24, skin, 0.11, 0, 0)
+    .box(0.21, 0.42, 0.25, shorts, -0.11, 0.4, 0).box(0.21, 0.42, 0.25, shorts, 0.11, 0.4, 0)
+    .box(0.52, 0.7, 0.3, top, 0, 0.8, 0)
+    .sph(0.19, skin, 0, 1.68, 0)
+    .sph(0.2, pick(HAIR), 0, 1.74, -0.04, 0.7);
+  const pose = pick(['squat', 'press', 'squat', 'normal']);
+  if (pose === 'squat') b.box(0.12, 0.12, 0.6, skin, -0.34, 1.25, 0.3).box(0.12, 0.12, 0.6, skin, 0.34, 1.25, 0.3);
+  else if (pose === 'press') b.box(0.12, 0.62, 0.12, skin, -0.34, 1.35, 0).box(0.12, 0.62, 0.12, skin, 0.34, 1.35, 0);
+  else b.box(0.13, 0.66, 0.15, skin, -0.34, 0.8, 0).box(0.13, 0.66, 0.15, skin, 0.34, 0.8, 0);
+  return out(b, 0.4, 1.95);
+}
+
 /* ---------- registry ---------- */
 // pts = score; needF = fraction of footprint radius the hole must reach to swallow it
 export const TYPES = {
@@ -366,6 +572,20 @@ export const TYPES = {
   skyscraper: { make: skyscraper, n: 3, pts: 1300, needF: 0.85 },
   fountain: { make: fountain, n: 1, pts: 100, needF: 0.85 },
   waterTower: { make: waterTower, n: 1, pts: 300, needF: 0.85 },
+  motorcycle: { make: () => motorcycle(true), n: 5, pts: 35, needF: 0.85 },
+  motorcycleParked: { make: () => motorcycle(false), n: 3, pts: 25, needF: 0.85 },
+  bicycle: { make: () => bicycle(true), n: 6, pts: 25, needF: 0.85 },
+  bikeParked: { make: () => bicycle(false), n: 3, pts: 10, needF: 0.85 },
+  scooter: { make: scooter, n: 6, pts: 22, needF: 0.85 },
+  dogWalker: { make: dogWalker, n: 8, pts: 30, needF: 0.85 },
+  gym: { make: gym, n: 1, pts: 400, needF: 0.85 },
+  pullupRig: { make: pullupRig, n: 1, pts: 60, needF: 0.85 },
+  squatRack: { make: squatRack, n: 1, pts: 50, needF: 0.85 },
+  kettlebell: { make: kettlebell, n: 3, pts: 6, needF: 0.85 },
+  tire: { make: tire, n: 1, pts: 12, needF: 0.85 },
+  plyoBox: { make: plyoBox, n: 3, pts: 8, needF: 0.85 },
+  rower: { make: rower, n: 1, pts: 25, needF: 0.85 },
+  athlete: { make: athlete, n: 12, pts: 15, needF: 0.85 },
 };
 
 export const MODELS = {};

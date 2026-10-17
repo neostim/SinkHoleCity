@@ -164,7 +164,7 @@ class Hole {
   move(dx, dz, dt) {
     const m = Math.hypot(dx, dz);
     if (m > 1) { dx /= m; dz /= m; }
-    const sp = (8.8 + this.r * 0.5) * (this.human ? 1 : 0.82);
+    const sp = (8.8 + this.r * 0.5) * (this.human ? 1.12 : 0.8); // humans are a bit quicker than bots so they can always outrun them
     const k = Math.min(1, dt * 7);
     this.vx += (dx * sp - this.vx) * k;
     this.vz += (dz * sp - this.vz) * k;
@@ -196,6 +196,7 @@ for (let i = 0; i < BOT_COUNT; i++) {
   b.think = rand(0, 0.5);
   b.target = null;
   b.wander = rand(0, 6.28);
+  b.hunt = 0; b.cool = rand(0, 5);
   bots.push(b);
 }
 const holes = [human0, human1, ...bots];
@@ -641,13 +642,18 @@ function botUpdate(b, dt) {
     }
   }
   if (!danger) {
-    // hunt a smaller hole if one is close
-    let prey = null, pd = 28;
+    // hunt a clearly smaller hole, but only briefly and only when it's close, then lose interest for a while
+    let prey = null, pd = 16;
+    b.cool -= dt;
     for (const o of holes) {
       if (o === b || !o.alive) continue;
       const d = Math.hypot(o.x - b.x, o.z - b.z);
-      if (b.r > o.r * 1.3 && d < pd) { prey = o; pd = d; }
+      if (b.r > o.r * 1.45 && d < pd) { prey = o; pd = d; }
     }
+    if (prey && b.cool <= 0) {
+      b.hunt += dt;
+      if (b.hunt > 4) { b.hunt = 0; b.cool = 9; prey = null; }
+    } else { if (!prey) b.hunt = 0; prey = null; }
     if (prey) { dx = prey.x - b.x; dz = prey.z - b.z; }
     else if (b.target) { dx = b.target.x - b.x; dz = b.target.z - b.z; }
     else {

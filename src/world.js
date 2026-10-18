@@ -10,7 +10,13 @@ const N = Math.ceil((HALF * 2) / CELL);
 const CELLS = 10;
 export const ROADS = Array.from({ length: CELLS - 1 }, (_, i) => (i - 4) * 48); // -192 .. 192
 const CENTERS = Array.from({ length: CELLS }, (_, i) => (i - 4.5) * 48); // -216 .. 216
-const BLOCK_INDEX = { residential: 0, park: 1, downtown: 2, commercial: 3, shops: 4 };
+const BLOCK_INDEX = { residential: 0, park: 1, downtown: 2, commercial: 3, shops: 4, airport: 5 };
+const CENTERS_CITY = CENTERS.slice(1); // everything except the airport row along the north edge
+
+// Airport layout (all along the north edge, z < -197): runway, grass strip, apron with two taxi lanes
+const RUNWAY_Z = -229, TAXI_IN = -215, TAXI_OUT = -209;
+const EXIT_X = -26, ENTRY_X = -228; // taxiway connectors between runway and apron
+const STANDS = [40, 78, 116, 154, 192]; // parking spots (x) along the inbound taxi lane
 
 // Swappable RNG: generate(seed) swaps in a seeded generator so host and guest build the identical city.
 let R = Math.random;
@@ -35,9 +41,33 @@ float band(float x, float a, float b, float px) {
   float w = px * 0.75 + 1e-4;
   return smoothstep(a - w, a + w, x) * (1.0 - smoothstep(b - w, b + w, x));
 }
+vec3 airportColor(vec2 p, float px) {
+  vec3 grass = hx(0x5f9e48);
+  vec3 asphalt = hx(0x2e3136);
+  vec3 concrete = hx(0xaeb0ae);
+  vec3 white = hx(0xf2f2f2);
+  vec3 yellow = hx(0xe8c43a);
+  vec3 c = grass * (0.94 + 0.1 * hash21(floor(p / 0.8)));
+  float apron = band(p.y, -219.0, -197.0, px);
+  c = mix(c, concrete, apron);
+  float joints = max(band(mod(p.x, 10.0), 0.0, 0.12, px), band(mod(p.y, 9.0), 0.0, 0.12, px)) * apron;
+  c *= 1.0 - 0.1 * joints;
+  float conn = max(band(p.x, -30.0, -22.0, px), band(p.x, -232.0, -224.0, px)) * band(p.y, -222.5, -218.0, px);
+  c = mix(c, concrete, conn);
+  c = mix(c, yellow, max(band(p.y, -215.25, -214.75, px), band(p.y, -209.25, -208.75, px)) * apron);
+  float rw = band(p.y, -236.0, -222.0, px);
+  c = mix(c, asphalt, rw);
+  c = mix(c, white, (band(p.y, -235.6, -235.2, px) + band(p.y, -222.8, -222.4, px)) * rw);
+  c = mix(c, white, band(p.y, -229.2, -228.8, px) * step(mod(p.x, 14.0), 8.0) * rw);
+  float th = step(abs(abs(p.x) - 226.0), 6.0);
+  c = mix(c, white, th * step(0.5, fract(p.y / 1.6)) * band(p.y, -235.0, -223.0, px));
+  return c;
+}
+
 vec3 groundColor(vec2 p, float px) {
   const float HW = 240.0;
   if (abs(p.x) > HW || abs(p.y) > HW) return hx(0x74b455);
+  if (p.y < -197.0) return airportColor(p, px);
   vec2 ci = clamp(floor((p + HW) / 48.0), 0.0, 9.0);
   vec2 l = p - ((ci + 0.5) * 48.0 - HW);
   vec2 a = abs(l);
@@ -110,6 +140,10 @@ export class World {
     this.movers = [];
     this.falling = [];
     this.byId = new Map();
+    this.planes = [];
+    this.planeRespawn = [];
+    this.stands = STANDS.map(() => null);
+    this.runway = null; // plane currently holding the runway
     this.nextId = 0;
     this.onSpawn = null; // host hook: called for pedestrians that wander in after generation
     this.uHoles = Array.from({ length: MAX_HOLES }, () => new THREE.Vector3(0, 0, 0));
@@ -253,6 +287,18 @@ export class World {
 
   updateRemote(dt, t) {
     const k = Math.min(1, dt * 10);
+    for (const o of this.planes) {
+      const g = o.tgt;
+      if (!g || o.state !== 0) continue;
+      const wasVisible = o.mesh.visible;
+      this.setPlaneVisible(o, g.vis);
+      if (!wasVisible || Math.abs(g.x - o.px) > 60 || Math.abs(g.z - o.pz) > 60) { o.px = g.x; o.py = g.y; o.pz = g.z; o.hd = g.hd; o.pitch = g.pt; }
+      const kk = Math.min(1, dt * 8);
+      o.px += (g.x - o.px) * kk; o.py += (g.y - o.py) * kk; o.pz += (g.z - o.pz) * kk;
+      let dh = g.hd - o.hd; while (dh > Math.PI) dh -= 2 * Math.PI; while (dh < -Math.PI) dh += 2 * Math.PI;
+      o.hd += dh * kk; o.pitch += (g.pt - o.pitch) * kk;
+      this.syncPlane(o);
+    }
     for (const o of this.movers) {
       if (o.tx === undefined) {
         if (o.workout) o.mesh.position.y = Math.abs(Math.sin(t * 3.2 + o.phase)) * 0.3; // athletes animate before any update arrives
@@ -276,6 +322,7 @@ export class World {
   }
 
   startFall(o, hole) {
+    if (o.kind === 'plane') this.planeGone(o);
     o.state = 1;
     o.hole = hole;
     o.tx = hole.x; o.tz = hole.z;
@@ -355,7 +402,8 @@ export class World {
       } else {
         o.x += o.vx * dt; o.z += o.vz * dt;
         if (o.x > lim) o.x = -lim; else if (o.x < -lim) o.x = lim;
-        if (o.z > lim) o.z = -lim; else if (o.z < -lim) o.z = lim;
+        const zmin = o.zmin !== undefined ? o.zmin : -lim; // vehicles on the avenues turn around south of the airport
+        if (o.z > lim) o.z = zmin; else if (o.z < zmin) o.z = lim;
         o.mesh.position.set(o.x, 0, o.z);
         this.relocate(o);
       }
@@ -371,7 +419,7 @@ export class World {
     for (const o of this.movers) if (o.kind === 'person' && o.type === 'person') people++;
     if (people >= 520) return;
     for (let tries = 0; tries < 12; tries++) {
-      const cx = pick(CENTERS), cz = pick(CENTERS);
+      const cx = pick(CENTERS), cz = pick(CENTERS_CITY);
       const side = (R() * 4) | 0, t = rand(-15, 15), off = 17.5 + rand(-0.8, 0.8);
       const x = cx + (side < 2 ? t : side === 2 ? -off : off), z = cz + (side === 0 ? -off : side === 1 ? off : t);
       if (holes.some((h) => h.alive && Math.hypot(h.x - x, h.z - z) < h.r + 16)) continue;
@@ -381,11 +429,149 @@ export class World {
     }
   }
 
+  /* ---------------- airport traffic ---------------- */
+  spawnPlane(type, opts = {}) {
+    const o = this.spawn(type, -340, RUNWAY_Z, 0, opts);
+    o.kind = 'plane';
+    o.mesh.matrixAutoUpdate = true;
+    o.mesh.rotation.order = 'YXZ';
+    o.px = -340; o.py = 0; o.pz = RUNWAY_Z; o.hd = Math.PI / 2; o.pitch = 0; o.v = 0;
+    o.inGrid = true;
+    o.fl = { state: 'hold', timer: opts.timer !== undefined ? opts.timer : rand(3, 10), stand: -1, phase: '' };
+    this.planes.push(o);
+    this.setPlaneVisible(o, false);
+    return o;
+  }
+
+  setPlaneVisible(o, v) {
+    o.mesh.visible = v;
+    if (v && !o.inGrid) { this.gridAdd(o); o.inGrid = true; }
+    else if (!v && o.inGrid) { this.gridRemove(o); o.inGrid = false; }
+  }
+
+  syncPlane(o) {
+    o.x = o.px; o.z = o.pz;
+    o.mesh.position.set(o.px, o.py, o.pz);
+    o.mesh.rotation.set(o.pitch, o.hd, 0);
+    if (o.inGrid) this.relocate(o);
+  }
+
+  parkPlane(o, stand) {
+    o.fl.state = 'park'; o.fl.stand = stand; o.fl.timer = rand(12, 26);
+    this.stands[stand] = o;
+    o.px = STANDS[stand]; o.py = 0; o.pz = TAXI_IN; o.hd = Math.PI / 2; o.pitch = 0; o.v = 0;
+    this.setPlaneVisible(o, true);
+    this.syncPlane(o);
+  }
+
+  planeGone(o) { // eaten: free its stand / the runway, and send a replacement later (host only acts on the timers)
+    const i = this.planes.indexOf(o);
+    if (i >= 0) this.planes.splice(i, 1);
+    for (let k = 0; k < this.stands.length; k++) if (this.stands[k] === o) this.stands[k] = null;
+    if (this.runway === o) this.runway = null;
+    this.planeRespawn.push(rand(18, 30));
+    o.inGrid = false;
+  }
+
+  setPath(o, path, phase) { o.path = path; o.pi = 0; o.fl.phase = phase; this.startSeg(o); }
+
+  startSeg(o) {
+    const [x1, y1, z1, v1, flag] = o.path[o.pi];
+    if (flag === 'rel' && this.runway === o) this.runway = null;
+    const dx = x1 - o.px, dy = y1 - o.py, dz = z1 - o.pz, L = Math.hypot(dx, dz) || 0.01, v0 = o.v;
+    const vs = Math.max((v0 + v1) / 2, 0.5);
+    o.seg = { x0: o.px, y0: o.py, z0: o.pz, dx, dy, dz, L, v0, v1, dur: L / vs, t: 0, hd: Math.atan2(dx, dz) };
+  }
+
+  followPath(o, dt) {
+    const s = o.seg;
+    s.t += dt;
+    const tt = Math.min(s.t, s.dur), a = (s.v1 - s.v0) / s.dur;
+    const u = Math.min(1, (s.v0 * tt + 0.5 * a * tt * tt) / s.L);
+    o.px = s.x0 + s.dx * u; o.pz = s.z0 + s.dz * u; o.py = s.y0 + s.dy * u; o.v = s.v0 + a * tt;
+    let dh = s.hd - o.hd; while (dh > Math.PI) dh -= 2 * Math.PI; while (dh < -Math.PI) dh += 2 * Math.PI;
+    o.hd += dh * Math.min(1, dt * 3);
+    const tp = s.dy !== 0 ? Math.atan2(-s.dy, s.L) : 0; // nose down when descending, up when climbing
+    o.pitch += (tp - o.pitch) * Math.min(1, dt * 2.5);
+    if (s.t >= s.dur) {
+      o.px = s.x0 + s.dx; o.py = s.y0 + s.dy; o.pz = s.z0 + s.dz; o.v = s.v1;
+      o.pi++;
+      if (o.pi < o.path.length) this.startSeg(o); else this.pathDone(o);
+    }
+  }
+
+  pathDone(o) {
+    const f = o.fl;
+    if (f.phase === 'land') { f.state = 'park'; f.timer = rand(12, 26); o.v = 0; o.pitch = 0; }
+    else if (f.phase === 'out') { f.state = 'wait'; o.v = 0; }
+    else { // took off and climbed away: hide until the next landing slot
+      f.state = 'hold'; f.timer = rand(14, 32);
+      if (this.runway === o) this.runway = null;
+      this.setPlaneVisible(o, false);
+    }
+  }
+
+  // host only: planes land, park at the stands, taxi out and take off. One aircraft on the runway at a time.
+  updatePlanes(dt) {
+    for (let i = this.planeRespawn.length - 1; i >= 0; i--) {
+      this.planeRespawn[i] -= dt;
+      if (this.planeRespawn[i] <= 0) { this.planeRespawn.splice(i, 1); this.spawnPlane(pick(['jet', 'prop']), { timer: rand(2, 6) }); }
+    }
+    for (const o of this.planes) {
+      if (o.state !== 0) continue;
+      const f = o.fl;
+      if (f.state === 'hold') {
+        f.timer -= dt;
+        if (f.timer > 0 || this.runway) continue;
+        // arrivals always park west of every occupied stand so they never have to taxi through a parked plane
+        let minOcc = this.stands.length;
+        this.stands.forEach((v, k) => { if (v && k < minOcc) minOcc = k; });
+        const st = minOcc - 1;
+        if (st < 0) continue;
+        f.stand = st; this.stands[st] = o; this.runway = o;
+        o.px = -340; o.py = 36; o.pz = RUNWAY_Z; o.hd = Math.PI / 2; o.pitch = 0; o.v = 44;
+        this.setPlaneVisible(o, true);
+        this.setPath(o, [[-205, 0, RUNWAY_Z, 44], [-40, 0, RUNWAY_Z, 14], [EXIT_X, 0, -224, 12], [EXIT_X, 0, TAXI_IN, 8, 'rel'], [STANDS[st], 0, TAXI_IN, 0]], 'land');
+        f.state = 'fly';
+      } else if (f.state === 'park') {
+        f.timer -= dt;
+        if (f.timer > 0) continue;
+        this.stands[f.stand] = null;
+        this.setPath(o, [[STANDS[f.stand], 0, TAXI_OUT, 6], [ENTRY_X, 0, TAXI_OUT, 14], [ENTRY_X, 0, -221, 5]], 'out');
+        f.state = 'fly';
+      } else if (f.state === 'wait') {
+        if (this.runway) continue;
+        this.runway = o;
+        this.setPath(o, [[ENTRY_X, 0, RUNWAY_Z, 6], [-200, 0, RUNWAY_Z, 22], [60, 0, RUNWAY_Z, 50], [340, 40, RUNWAY_Z, 56, 'rel']], 'takeoff');
+        f.state = 'fly';
+      } else if (f.state === 'fly') this.followPath(o, dt);
+      if (o.mesh.visible) this.syncPlane(o);
+    }
+  }
+
+  planeSnapshot() {
+    return this.planes.map((o) => [o.id, o.type, o.vi, Math.round(o.px * 10), Math.round(o.py * 10), Math.round(o.pz * 10), Math.round(o.hd * 100), Math.round(o.pitch * 100), o.mesh.visible ? 1 : 0]);
+  }
+
+  // guest: aim planes at the host's latest positions (creating any plane we have not seen yet)
+  applyPlanes(list) {
+    for (const [id, type, vi, x, y, z, hd, pt, vis] of list) {
+      let o = this.byId.get(id);
+      if (!o) o = this.spawnPlane(type, { id, vi });
+      if (o.state !== 0) continue;
+      o.tgt = { x: x / 10, y: y / 10, z: z / 10, hd: hd / 100, pt: pt / 100, vis: !!vis };
+    }
+  }
+
   clear() {
     for (const o of this.all) this.scene.remove(o.mesh);
     this.all.clear();
     this.movers.length = 0;
     this.falling.length = 0;
+    this.planes.length = 0;
+    this.planeRespawn.length = 0;
+    this.stands = STANDS.map(() => null);
+    this.runway = null;
     this.byId.clear();
     this.nextId = 0;
     for (const a of this.grid) a.length = 0;
@@ -414,14 +600,17 @@ export class World {
         else if (d < 2) type = 'commercial';
         else if (d < 3) type = q < 0.4 ? 'commercial' : q < 0.7 ? 'shops' : q < 0.85 ? 'park' : 'residential';
         else type = q < 0.5 ? 'residential' : q < 0.78 ? 'park' : 'shops';
+        if (j === 0) type = 'airport'; // the whole north row is the airport
         blocks.push({ cx: CENTERS[i], cz: CENTERS[j], type });
         this.blockData[i + j * CELLS] = BLOCK_INDEX[type];
       }
     }
     this.blockTex.needsUpdate = true;
-    for (const b of blocks) this.populateBlock(b);
+    for (const b of blocks) if (b.type !== 'airport') this.populateBlock(b);
     this.populateRoads();
+    this.populateIntersections();
     this.populateSidewalkRiders();
+    this.populateAirport();
   }
 
   populateBlock(b) {
@@ -438,6 +627,10 @@ export class World {
 
     // street furniture on every block
     for (const [lx, lz] of [[-17.8, -17.8], [17.8, -17.8], [-17.8, 17.8], [17.8, 17.8]]) S('lamp', lx, lz);
+    // street lights along the middle of each block edge, arms reaching over the road
+    for (const [mx, mz, ry] of [[0, -18.4, Math.PI / 2], [0, 18.4, -Math.PI / 2], [-18.4, 0, Math.PI], [18.4, 0, 0]]) {
+      if (R() < 0.75) S('lamp', mx + (mx === 0 ? rand(-4, 4) : 0), mz + (mz === 0 ? rand(-4, 4) : 0), ry);
+    }
     for (let i = 0; i < 2; i++) { const [x, z] = edgePt(); S('hydrant', x, z); }
     for (let i = 0; i < 2; i++) { const [x, z] = edgePt(); S('trashcan', x, z); }
     for (let i = 0; i < 2; i++) { const [x, z, r] = edgePt(17); if (R() < 0.7) S('bench', x, z, r); }
@@ -546,7 +739,7 @@ export class World {
       for (let t = -WORLD + 8; t < WORLD - 6; t += 9.5) {
         if (ROADS.some((Rd) => Math.abs(t - Rd) < 8.5)) continue;
         for (const s of [-1, 1]) {
-          if (R() > 0.14) continue;
+          if (R() > 0.14 || t < -186) continue;
           this.spawn(parkedType(), L + s * 3.5, t, s > 0 ? 0 : Math.PI); // road running along z
         }
         for (const s of [-1, 1]) {
@@ -562,11 +755,11 @@ export class World {
           const dir = i % 2 === 0 ? 1 : -1;
           const q = R();
           const type = q < 0.12 ? 'bus' : q < 0.22 ? 'van' : q < 0.36 ? 'motorcycle' : q < 0.5 ? 'tesla' : q < 0.58 ? 'cybertruck' : 'car';
-          const t = rand(-WORLD + 5, WORLD - 5), sp = type === 'motorcycle' ? rand(8, 12) : rand(5, 9);
+          const t = axis === 'z' ? rand(-180, WORLD - 5) : rand(-WORLD + 5, WORLD - 5), sp = type === 'motorcycle' ? rand(8, 12) : rand(5, 9);
           let o;
           if (axis === 'z') {
             o = this.spawnMover(type, L + dir * 1.35, t, dir > 0 ? 0 : Math.PI, 'vehicle');
-            o.vz = sp * dir;
+            o.vz = sp * dir; o.zmin = -186;
           } else {
             o = this.spawnMover(type, t, L + dir * 1.35, dir > 0 ? Math.PI / 2 : -Math.PI / 2, 'vehicle');
             o.vx = sp * dir;
@@ -576,10 +769,40 @@ export class World {
     }
   }
 
+  // traffic lights at half the intersections, stop signs on all four approaches at the others
+  populateIntersections() {
+    for (const Lx of ROADS) {
+      for (const Lz of ROADS) {
+        const put = (type, x, z, ry) => { if (z > -196) this.spawn(type, x, z, ry); }; // nothing on the airport apron
+        if (R() < 0.5) {
+          for (const sx of [-1, 1]) for (const sz of [-1, 1]) put('trafficLight', Lx + sx * 5.7, Lz + sz * 5.7, Math.atan2(-sx, -sz));
+        } else {
+          put('stopSign', Lx + 5.6, Lz - 9.2, Math.PI);
+          put('stopSign', Lx - 5.6, Lz + 9.2, 0);
+          put('stopSign', Lx - 9.2, Lz + 5.6, -Math.PI / 2);
+          put('stopSign', Lx + 9.2, Lz - 5.6, Math.PI / 2);
+        }
+      }
+    }
+  }
+
+  populateAirport() {
+    for (const x of [-150, -128, -106]) this.spawn('terminal', x, -201, 0);
+    this.spawn('tower', -70, -201, 0);
+    for (const x of [120, 142, 164, 186, 208]) this.spawn('hangar', x, -202, 0);
+    // three aircraft already parked, three more circling until the runway frees up
+    const kinds = ['jet', 'prop', 'jet', 'prop', 'jet', 'jet'];
+    kinds.forEach((t, i) => {
+      const o = this.spawnPlane(t, { timer: i < 3 ? 0 : 5 + (i - 3) * 11 });
+      if (i < 3) this.parkPlane(o, [4, 3, 2][i]);
+    });
+  }
+
   // bicycles and kick-scooters cruising along the sidewalks (right at the kerb side of each block edge)
   populateSidewalkRiders() {
     for (const axis of ['z', 'x']) {
       for (const c of CENTERS) {
+        if (axis === 'x' && c === CENTERS[0]) continue; // no sidewalk rides across the runway
         for (const side of [-1, 1]) {
           const line = c + side * 18.6;
           const n = R() < 0.35 ? 2 : 1;
@@ -588,11 +811,11 @@ export class World {
             const type = R() < 0.5 ? 'bicycle' : 'scooter';
             const dir = R() < 0.5 ? 1 : -1;
             const sp = type === 'bicycle' ? rand(4.5, 6.5) : rand(3, 4.5);
-            const t = rand(-WORLD + 5, WORLD - 5);
+            const t = axis === 'z' ? rand(-180, WORLD - 5) : rand(-WORLD + 5, WORLD - 5);
             let o;
             if (axis === 'z') {
               o = this.spawnMover(type, line, t, dir > 0 ? 0 : Math.PI, 'vehicle');
-              o.vz = sp * dir;
+              o.vz = sp * dir; o.zmin = -186;
             } else {
               o = this.spawnMover(type, t, line, dir > 0 ? Math.PI / 2 : -Math.PI / 2, 'vehicle');
               o.vx = sp * dir;

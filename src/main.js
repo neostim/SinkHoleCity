@@ -464,6 +464,7 @@ function sendSnapshot() {
     tm: timeLeft,
     h: holes.map((h) => [h.alive ? 1 : 0, Math.round(h.x * 10), Math.round(h.z * 10), Math.round(h.r * 100), Math.floor(h.score)]),
     m: movers,
+    pl: world.planeSnapshot(),
     e: evOut.slice(), sp: spOut.slice(), k: killOut.slice(),
   });
   evOut.length = spOut.length = killOut.length = 0;
@@ -540,6 +541,7 @@ function applySnapshot(m) {
   });
   if (!me.alive) { /* waiting to respawn */ } else $('banner').classList.add('hidden');
   world.applyMovers(m.m);
+  if (m.pl) world.applyPlanes(m.pl);
   for (const [id, type, vi, x, z] of m.sp) world.spawnMover(type, x / 10, z / 10, rand(0, 6.28), 'person', { id, vi });
   for (const [id, idx] of m.e) {
     const o = world.byId.get(id), h = holes[idx];
@@ -656,6 +658,7 @@ function botThink(b) {
   let best = null, bestScore = -1;
   world.query(b.x, b.z, 42, (o) => {
     if (o.state !== 0 || b.r < o.need) return;
+    if (o.kind === 'plane' && o.py > 1.5) return;
     const d = Math.hypot(o.x - b.x, o.z - b.z);
     const s = (o.pts + 8) / (d + 6) * rand(0.8, 1.25) * (o.kind === 'person' ? 0.7 : 1);
     if (s > bestScore) { bestScore = s; best = o; }
@@ -730,6 +733,7 @@ function onLocalEat(o) {
 function swallow(h) {
   world.query(h.x, h.z, h.r, (o) => {
     if (o.state !== 0 || h.r < o.need) return;
+    if (o.kind === 'plane' && o.py > 1.5) return; // only aircraft on the ground
     const d = Math.hypot(o.x - h.x, o.z - h.z);
     if (d < Math.max(0.15, h.r * 0.9 - o.r * 0.35)) {
       world.startFall(o, h);
@@ -866,6 +870,7 @@ function hostFrame(dt) {
 
   world.replenish(dt, holes);
   world.updateMovers(dt, t, holes);
+  world.updatePlanes(dt);
   world.updateFalling(dt);
 
   if (role === 'host' && link && link.connected && state === 'playing') {

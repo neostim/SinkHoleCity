@@ -737,6 +737,114 @@ function trickOrTreater() {
   return o;
 }
 
+
+/* ---------- street signals ---------- */
+let signalCount = 0;
+function trafficLight() {
+  const b = new B();
+  const active = signalCount++ % 3; // which lamp is lit: red, yellow or green
+  const bright = ['#ff3b30', '#ffd60a', '#34c759'], dim = ['#4a1512', '#4a4210', '#12401f'];
+  b.cyl(0.11, 0.14, 4.7, '#3d4046', 0, 0, 0).box(0.14, 0.14, 2.1, '#3d4046', 0, 4.35, 1.0)
+    .box(0.44, 1.25, 0.36, '#1c1c1f', 0, 3.5, 2.0);
+  [0, 1, 2].forEach((i) => {
+    const col = i === active ? bright[i] : dim[i];
+    const y = 4.4 - i * 0.37;
+    b.sph(0.13, col, 0, y, 2.2, 1).sph(0.13, col, 0, y, 1.8, 1);
+  });
+  return out(b, 0.4, 4.9);
+}
+
+function stopSign() {
+  const b = new B();
+  const oct = (r, h) => { const g = new THREE.CylinderGeometry(r, r, h, 8); g.rotateY(Math.PI / 8); return g; };
+  b.cyl(0.045, 0.055, 2.5, '#9aa0a8', 0, 0, 0)
+    .push(oct(0.5, 0.04), '#ffffff', 0, 2.3, 0, Math.PI / 2)
+    .push(oct(0.45, 0.05), '#c1121f', 0, 2.3, 0.03, Math.PI / 2);
+  for (const x of [-0.2, -0.07, 0.07, 0.2]) b.box(0.08, 0.15, 0.03, '#ffffff', x, 2.23, 0.07);
+  return out(b, 0.3, 2.9);
+}
+
+/* ---------- airport ---------- */
+function jet() {
+  const b = new B();
+  const livery = pick(['#d62828', '#1d4ed8', '#15803d', '#ea580c']);
+  const body = '#f4f6f8', glass = '#27323f', Y = 1.6;
+  b.push(new THREE.CylinderGeometry(0.95, 0.95, 15, 14), body, 0, Y, 0, Math.PI / 2)
+    .push(new THREE.CylinderGeometry(0.28, 0.95, 2.6, 14), body, 0, Y, 8.8, Math.PI / 2)
+    .push(new THREE.CylinderGeometry(0.95, 0.3, 3.2, 14), body, 0, Y, -9.1, Math.PI / 2)
+    .box(1.92, 0.3, 10, livery, 0, Y - 0.1, -0.5)
+    .box(1.96, 0.22, 9, glass, 0, Y + 0.4, 0.8)
+    .box(1.3, 0.3, 0.8, glass, 0, Y + 0.55, 7.2)
+    .push(new THREE.BoxGeometry(6.8, 0.16, 2.6), body, -3.6, Y - 0.4, 0.3, 0, -0.3)
+    .push(new THREE.BoxGeometry(6.8, 0.16, 2.6), body, 3.6, Y - 0.4, 0.3, 0, 0.3)
+    .box(0.1, 0.8, 0.8, livery, -6.85, Y - 0.2, -0.7).box(0.1, 0.8, 0.8, livery, 6.85, Y - 0.2, -0.7)
+    .push(new THREE.CylinderGeometry(0.5, 0.45, 2.4, 10), '#9aa0a8', -2.9, Y - 0.95, 1.2, Math.PI / 2)
+    .push(new THREE.CylinderGeometry(0.5, 0.45, 2.4, 10), '#9aa0a8', 2.9, Y - 0.95, 1.2, Math.PI / 2)
+    .push(new THREE.BoxGeometry(0.22, 3.0, 2.4), livery, 0, Y + 2.2, -8.0, -0.4)
+    .box(5.2, 0.14, 1.5, body, 0, Y + 0.9, -8.7)
+    .box(0.12, 0.9, 0.12, '#555555', 0, 0.3, 5.2).wheel(0.3, 0.2, 0, 0.3, 5.2)
+    .box(0.12, 0.9, 0.12, '#555555', -1.3, 0.3, -0.5).box(0.12, 0.9, 0.12, '#555555', 1.3, 0.3, -0.5)
+    .wheel(0.38, 0.26, -1.3, 0.38, -0.5).wheel(0.38, 0.26, 1.3, 0.38, -0.5);
+  const o = out(b, 10, 6);
+  o.geo.scale(0.66, 0.66, 0.66); // regional-jet size so it fits the city's scale
+  o.geo.computeBoundingSphere();
+  o.r = 6.4; o.h = 4.4;
+  return o;
+}
+
+function prop() {
+  const b = new B();
+  const col = pick(['#d62828', '#1d4ed8', '#f59e0b', '#15803d']);
+  const body = '#f6f6f2', Y = 1.2;
+  b.push(new THREE.CylinderGeometry(0.5, 0.5, 5.4, 12), body, 0, Y, 0, Math.PI / 2)
+    .push(new THREE.CylinderGeometry(0.4, 0.5, 1.2, 12), '#d9d9d4', 0, Y, 3.2, Math.PI / 2)
+    .push(new THREE.CylinderGeometry(0.5, 0.18, 2.6, 12), body, 0, Y + 0.05, -3.9, Math.PI / 2)
+    .box(1.04, 0.22, 4.2, col, 0, Y - 0.1, -0.3)
+    .box(0.95, 0.28, 1.1, '#27323f', 0, Y + 0.38, 0.7)
+    .box(9, 0.12, 1.5, body, 0, Y + 0.62, 0.5).box(9, 0.14, 0.3, col, 0, Y + 0.62, -0.2)
+    .box(0.1, 0.8, 0.14, '#cfcfca', -1.8, Y + 0.1, 0.5).box(0.1, 0.8, 0.14, '#cfcfca', 1.8, Y + 0.1, 0.5)
+    .push(new THREE.BoxGeometry(0.12, 1.4, 1.1), col, 0, Y + 0.95, -4.4, -0.3)
+    .box(2.8, 0.1, 0.8, body, 0, Y + 0.45, -4.5)
+    .box(2.3, 0.12, 0.08, '#222222', 0, Y, 3.85).box(0.12, 2.3, 0.08, '#222222', 0, Y, 3.85)
+    .wheel(0.26, 0.14, -0.95, 0.26, 0.5).wheel(0.26, 0.14, 0.95, 0.26, 0.5).wheel(0.2, 0.12, 0, 0.2, 2.5)
+    .box(0.07, 0.7, 0.07, '#555555', -0.95, 0.25, 0.5).box(0.07, 0.7, 0.07, '#555555', 0.95, 0.25, 0.5);
+  return out(b, 4.4, 3.3);
+}
+
+function terminal() {
+  const b = new B();
+  const w = 22, d = 7, h = 7;
+  b.facade(w, h, d, '#9db6c6', 0, 0, 0)
+    .box(w + 0.8, 0.4, d + 0.8, '#5f6672', 0, h, 0)
+    .box(w - 1, 1.4, d - 1, '#cfd6dc', 0, h + 0.4, 0)
+    .box(w * 0.8, 0.5, 2.6, '#27323f', 0, 3.2, -d / 2 - 1.3) // canopy over the doors (planes side)
+    .box(0.3, 3.2, 0.3, '#9aa0a8', -w * 0.4, 0, -d / 2 - 2.4).box(0.3, 3.2, 0.3, '#9aa0a8', w * 0.4, 0, -d / 2 - 2.4);
+  return out(b, Math.hypot(w, d) / 2, h + 1.8, 'bld');
+}
+
+function hangar() {
+  const b = new B();
+  const w = 18, d = 10, h = 6;
+  b.box(w, h, d, '#aab2bd', 0, 0, 0)
+    .box(w * 0.7, h * 0.85, 0.3, '#4b5563', 0, 0, -d / 2 - 0.1)
+    .box(w * 0.7, 0.18, 0.34, '#d62828', 0, h * 0.6, -d / 2 - 0.12)
+    .box(w * 0.7, 0.18, 0.34, '#d62828', 0, h * 0.3, -d / 2 - 0.12);
+  const rg = new THREE.CylinderGeometry(0, 1, 1, 4, 1);
+  rg.rotateY(Math.PI / 4);
+  rg.scale((w / 2 + 0.5) / 0.7071, 2.6, (d / 2 + 0.5) / 0.7071);
+  b.push(rg, '#6b7684', 0, h + 1.3, 0);
+  return out(b, Math.hypot(w, d) / 2, h + 2.6);
+}
+
+function tower() {
+  const b = new B();
+  b.cyl(2.4, 2.8, 8, '#d8d8d8', 0, 0, 0, 14).cyl(1.5, 1.8, 14, '#c9ccd1', 0, 8, 0, 14)
+    .cyl(3.4, 2.2, 1.2, '#d8d8d8', 0, 22, 0, 14).cyl(3.5, 3.5, 2.4, '#27414f', 0, 23.2, 0, 14)
+    .cyl(3.8, 3.8, 0.4, '#d8d8d8', 0, 25.6, 0, 14).cone(3.6, 1.4, '#c1121f', 0, 26, 0, 14)
+    .cyl(0.08, 0.1, 5, '#cc3333', 0, 27.4, 0, 6);
+  return out(b, 3.8, 32);
+}
+
 /* ---------- registry ---------- */
 // pts = score; needF = fraction of footprint radius the hole must reach to swallow it
 export const TYPES = {
@@ -779,6 +887,13 @@ export const TYPES = {
   pumpkinBig: { make: () => pumpkin(true), n: 3, pts: 20, needF: 0.85 },
   tombstone: { make: tombstone, n: 5, pts: 10, needF: 0.85 },
   trickOrTreater: { make: trickOrTreater, n: 16, pts: 20, needF: 0.85 },
+  trafficLight: { make: trafficLight, n: 3, pts: 30, needF: 0.85 },
+  stopSign: { make: stopSign, n: 1, pts: 14, needF: 0.85 },
+  jet: { make: jet, n: 4, pts: 600, needF: 0.85 },
+  prop: { make: prop, n: 4, pts: 250, needF: 0.85 },
+  terminal: { make: terminal, n: 1, pts: 900, needF: 0.85 },
+  hangar: { make: hangar, n: 1, pts: 500, needF: 0.85 },
+  tower: { make: tower, n: 1, pts: 450, needF: 0.85 },
 };
 
 export const MODELS = {};

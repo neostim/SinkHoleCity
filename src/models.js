@@ -550,6 +550,193 @@ function athlete() {
   return out(b, 0.4, 1.95);
 }
 
+
+/* ---------- electric vehicles ---------- */
+let teslaCount = 0;
+function tesla() {
+  const b = new B();
+  const suv = (teslaCount++ % 8) >= 5; // 5 sedans (Model S/3 style) then 3 crossovers (Model Y style)
+  const col = pick(['#f5f5f5', '#c8102e', '#1d1d1f', '#2a4fd6', '#aeb3ba', '#7a7f87']);
+  const glass = '#151c26';
+  const bodyH = suv ? 0.62 : 0.52;
+  b.box(1.92, bodyH, 4.6, col, 0, 0.34, 0)
+    // gently sloped hood and trunk
+    .push(new THREE.BoxGeometry(1.86, 0.12, 1.5), col, 0, 0.34 + bodyH, 1.6, 0.1)
+    .push(new THREE.BoxGeometry(1.86, 0.12, 1.0), col, 0, 0.34 + bodyH, -1.9, -0.08)
+    .box(1.94, 0.12, 4.62, '#25272c', 0, 0.28, 0);
+  // panoramic glass roof: a flattened dome
+  const dome = new THREE.SphereGeometry(1, 18, 10);
+  dome.scale(0.9, suv ? 0.56 : 0.42, suv ? 1.7 : 1.55);
+  b.push(dome, glass, 0, 0.34 + bodyH - 0.02, suv ? -0.35 : -0.1);
+  // slim light bars (no grille on a Tesla)
+  b.box(0.55, 0.07, 0.06, '#e8f6ff', -0.62, 0.34 + bodyH * 0.55, 2.31).box(0.55, 0.07, 0.06, '#e8f6ff', 0.62, 0.34 + bodyH * 0.55, 2.31)
+    .box(1.75, 0.07, 0.05, '#ff2a2a', 0, 0.34 + bodyH * 0.8, -2.31);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    b.wheel(0.38, 0.28, sx * 0.95, 0.38, sz * 1.45, '#16161a').wheel(0.26, 0.3, sx * 0.95, 0.38, sz * 1.45, '#cfd3d9');
+  }
+  return out(b, 2.35, suv ? 1.7 : 1.5);
+}
+
+// Cybertruck: a stainless-steel wedge. The body is a box whose top edge is bent into the famous slanted profile.
+function cybertruck() {
+  const b = new B();
+  const steel = pick(['#b9bec6', '#b9bec6', '#2b2d31', '#e9ecef']);
+  const W = 2.2, L = 5.6, base = 0.45;
+  const Zs = [-2.8, -1.2, -0.2, 1.1, 2.8];
+  const Ys = [1.3, 1.95, 1.95, 1.15, 0.8];
+  const g = new THREE.BoxGeometry(W, 1, L, 1, 1, 4);
+  const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const k = Math.round((pos.getZ(i) + L / 2) / (L / 4));
+    const top = pos.getY(i) > 0;
+    pos.setZ(i, Zs[k]);
+    pos.setY(i, top ? Ys[k] : base);
+    if (top) pos.setX(i, pos.getX(i) * 0.84); // narrower roof
+  }
+  g.computeVertexNormals();
+  b.push(g, steel, 0, 0, 0);
+  const glass = '#12161d';
+  // slanted windshield, side windows, light bars
+  b.push(new THREE.BoxGeometry(1.7, 0.04, 1.55), glass, 0, 1.58, 0.45, Math.atan2(1.95 - 1.15, 1.3));
+  b.box(2.0, 0.34, 1.7, glass, 0, 1.08, -0.45)
+    .box(1.9, 0.06, 0.06, '#f4fbff', 0, 0.62, 2.78)
+    .box(1.9, 0.07, 0.05, '#ff2a2a', 0, 1.12, -2.8)
+    .box(2.24, 0.12, 5.2, '#1c1d20', 0, 0.38, 0);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    b.wheel(0.5, 0.34, sx * 1.06, 0.5, sz * 1.8, '#16161a').wheel(0.3, 0.36, sx * 1.06, 0.5, sz * 1.8, '#9aa0a8');
+  }
+  return out(b, 3.0, 2.1);
+}
+
+
+/* ---------- Halloween ---------- */
+function pumpkin(big) {
+  const b = new B();
+  const s = big ? 1.5 : 1;
+  const col = pick(['#ff7a1a', '#f26a0f', '#ff8c2b']);
+  const glow = '#ffe45c';
+  const angry = R() < 0.5;
+  b.sph(0.5 * s, col, 0, 0.42 * s, 0, 0.82)
+    .sph(0.4 * s, '#e8630d', -0.24 * s, 0.42 * s, 0, 0.82).sph(0.4 * s, '#e8630d', 0.24 * s, 0.42 * s, 0, 0.82)
+    .box(0.12 * s, 0.22 * s, 0.12 * s, '#3f6b2a', 0, 0.74 * s, 0);
+  // carved, glowing face on the +z side (big features so it reads from the high camera)
+  for (const sx of [-1, 1]) {
+    b.push(new THREE.BoxGeometry(0.2 * s, 0.14 * s, 0.08 * s), glow, sx * 0.2 * s, 0.56 * s, 0.5 * s, 0, 0, angry ? -sx * 0.5 : 0);
+  }
+  b.box(0.11 * s, 0.11 * s, 0.08 * s, glow, 0, 0.44 * s, 0.52 * s)
+    .box(0.5 * s, 0.1 * s, 0.08 * s, glow, 0, 0.27 * s, 0.5 * s)
+    .box(0.09 * s, 0.13 * s, 0.08 * s, glow, -0.17 * s, 0.2 * s, 0.5 * s)
+    .box(0.09 * s, 0.13 * s, 0.08 * s, glow, 0.17 * s, 0.2 * s, 0.5 * s);
+  return out(b, 0.52 * s, 0.95 * s);
+}
+
+function tombstone() {
+  const b = new B();
+  const col = pick(['#8d939c', '#7b818a', '#a1a6ad']);
+  if (R() < 0.35) { // cross
+    b.box(0.2, 1.1, 0.2, col, 0, 0, 0).box(0.7, 0.2, 0.2, col, 0, 0.7, 0).box(0.9, 0.12, 0.6, '#6f747c', 0, 0, 0);
+  } else { // rounded headstone
+    b.box(0.85, 0.85, 0.2, col, 0, 0, 0)
+      .push(new THREE.CylinderGeometry(0.425, 0.425, 0.2, 14), col, 0, 0.85, 0, Math.PI / 2)
+      .box(0.5, 0.06, 0.04, '#5d626a', 0, 0.7, 0.11).box(0.4, 0.06, 0.04, '#5d626a', 0, 0.55, 0.11)
+      .box(1.0, 0.12, 0.5, '#6f747c', 0, 0, 0.05);
+  }
+  return out(b, 0.65, 1.4);
+}
+
+// Trick-or-treaters: kids in costume carrying a candy bucket. Eight costumes cycle through the variants.
+let kidCount = 0;
+function trickOrTreater() {
+  const b = new B();
+  const c = kidCount++ % 8;
+  const skin = pick(SKIN);
+  const bagCol = pick(['#ff7a00', '#ff7a00', '#7b2cbf', '#2b2b30']);
+  const bucket = (x, y, z) => { // candy bucket with handle and a few sweets
+    b.cyl(0.21, 0.16, 0.28, bagCol, x, y, z, 10).box(0.3, 0.03, 0.03, '#4a4a4a', x, y + 0.36, z)
+      .sph(0.07, '#ff4d6d', x - 0.06, y + 0.3, z).sph(0.07, '#ffe14d', x + 0.06, y + 0.3, z + 0.03).sph(0.06, '#4dd0ff', x, y + 0.32, z - 0.05);
+  };
+  const legs = (col, h = 0.8) => b.box(0.2, h, 0.24, col, -0.11, 0.8 - h, 0).box(0.2, h, 0.24, col, 0.11, 0.8 - h, 0);
+  const torso = (col) => b.box(0.52, 0.72, 0.3, col, 0, 0.78, 0);
+  const armsDown = (col) => b.box(0.13, 0.66, 0.15, col, -0.34, 0.8, 0).box(0.13, 0.66, 0.15, col, 0.34, 0.8, 0);
+  const armsOut = (col) => b.box(0.12, 0.12, 0.65, col, -0.3, 1.25, 0.4).box(0.12, 0.12, 0.65, col, 0.3, 1.25, 0.4);
+  const head = (col, y = 1.68) => b.sph(0.19, col, 0, y, 0);
+  const eyes = (col, y = 1.7) => b.box(0.05, 0.05, 0.04, col, -0.07, y, 0.18).box(0.05, 0.05, 0.04, col, 0.07, y, 0.18);
+
+  if (c === 0) { // ghost in a bedsheet
+    b.cyl(0.34, 0.56, 1.55, '#f4f4f8', 0, 0, 0, 14).sph(0.36, '#f4f4f8', 0, 1.56, 0, 0.95)
+      .box(0.1, 0.2, 0.06, '#111111', -0.13, 1.5, 0.35).box(0.1, 0.2, 0.06, '#111111', 0.13, 1.5, 0.35)
+      .box(0.11, 0.13, 0.06, '#111111', 0, 1.22, 0.36)
+      .box(0.1, 0.1, 0.45, '#f4f4f8', 0.4, 0.9, 0.18);
+    bucket(0.45, 0.6, 0.42);
+  } else if (c === 1) { // zombie
+    const z = '#8fbf7a';
+    legs('#3d3d46', 0.6); b.box(0.2, 0.2, 0.24, z, -0.11, 0, 0).box(0.2, 0.2, 0.24, z, 0.11, 0, 0);
+    torso('#5b4a3a'); b.box(0.2, 0.2, 0.02, z, 0.1, 1.0, 0.16);
+    armsOut(z); head(z);
+    b.sph(0.2, '#2b2018', 0, 1.76, -0.05, 0.5);
+    eyes('#c1121f'); b.box(0.1, 0.03, 0.04, '#331111', 0, 1.6, 0.18);
+    bucket(0.3, 0.9, 0.72);
+  } else if (c === 2) { // witch
+    b.cyl(0.16, 0.46, 1.0, '#2a2230', 0, 0, 0, 12);
+    b.box(0.44, 0.5, 0.28, '#6b2fa0', 0, 0.95, 0);
+    armsDown('#6b2fa0'); head('#7bbf6a');
+    b.box(0.05, 0.08, 0.05, '#6aa85a', 0, 1.65, 0.2)
+      .cyl(0.46, 0.46, 0.04, '#1b1520', 0, 1.74, 0, 16).cyl(0, 0.3, 0.65, '#1b1520', 0, 1.78, 0, 12)
+      .box(0.34, 0.06, 0.34, '#ff7a00', 0, 1.8, 0);
+    eyes('#111111');
+    b.box(0.1, 0.1, 0.4, '#6b2fa0', 0.34, 0.9, 0.15);
+    bucket(0.4, 0.62, 0.38);
+  } else if (c === 3) { // vampire
+    const pale = '#e8e0ea';
+    b.box(0.72, 1.15, 0.1, '#16161b', 0, 0.55, -0.22).box(0.64, 1.05, 0.04, '#a30f1f', 0, 0.58, -0.16);
+    legs('#111114'); torso('#111114'); b.box(0.14, 0.5, 0.02, '#f2f2f2', 0, 0.92, 0.16);
+    armsDown('#111114'); head(pale);
+    b.sph(0.2, '#0f0f12', 0, 1.74, -0.05, 0.7);
+    b.box(0.03, 0.05, 0.03, '#ffffff', -0.04, 1.6, 0.18).box(0.03, 0.05, 0.03, '#ffffff', 0.04, 1.6, 0.18);
+    eyes('#c1121f', 1.71);
+    bucket(0.42, 0.55, 0.12);
+  } else if (c === 4) { // skeleton
+    const k = '#15151a', w = '#f4f4f4';
+    legs(k); torso(k); armsDown(k);
+    for (const sx of [-1, 1]) b.box(0.06, 0.7, 0.02, w, sx * 0.11, 0.05, 0.13).box(0.05, 0.55, 0.02, w, sx * 0.34, 0.85, 0.09);
+    for (const y of [0.95, 1.1, 1.25]) b.box(0.4, 0.04, 0.02, w, 0, y, 0.16);
+    b.box(0.05, 0.6, 0.02, w, 0, 0.85, 0.16);
+    head(w); b.box(0.07, 0.08, 0.03, '#000000', -0.07, 1.7, 0.19).box(0.07, 0.08, 0.03, '#000000', 0.07, 1.7, 0.19)
+      .box(0.04, 0.05, 0.03, '#000000', 0, 1.63, 0.19).box(0.18, 0.06, 0.1, w, 0, 1.52, 0.08);
+    bucket(0.42, 0.55, 0.1);
+  } else if (c === 5) { // mummy
+    const m = '#e6dcc3', d = '#c9bd9f';
+    legs(m); torso(m); armsOut(m); head(m);
+    for (const y of [0.85, 1.0, 1.15, 1.3]) b.box(0.54, 0.04, 0.32, d, 0, y, 0);
+    for (const y of [0.15, 0.4, 0.62]) b.box(0.5, 0.04, 0.26, d, 0, y, 0);
+    b.box(0.12, 0.05, 0.03, '#222222', -0.07, 1.7, 0.19).box(0.12, 0.05, 0.03, '#222222', 0.07, 1.7, 0.19);
+    bucket(0.3, 0.9, 0.72);
+  } else if (c === 6) { // little devil
+    const r = '#c1121f';
+    legs(r); torso(r); armsDown(r); head('#d62828');
+    b.cone(0.06, 0.24, '#1a1a1a', -0.1, 1.82, 0, 6).cone(0.06, 0.24, '#1a1a1a', 0.1, 1.82, 0, 6)
+      .box(0.04, 0.04, 0.6, r, 0, 0.5, -0.35).cone(0.07, 0.14, '#1a1a1a', 0, 0.44, -0.72, 4);
+    eyes('#ffd23f');
+    bucket(0.42, 0.55, 0.1);
+  } else { // kid in a pumpkin costume
+    b.box(0.18, 0.5, 0.2, '#222222', -0.12, 0, 0).box(0.18, 0.5, 0.2, '#222222', 0.12, 0, 0)
+      .sph(0.52, '#ff7a1a', 0, 0.85, 0, 1.0)
+      .sph(0.4, '#e8630d', -0.26, 0.85, 0, 1.0).sph(0.4, '#e8630d', 0.26, 0.85, 0, 1.0);
+    head(skin, 1.58);
+    b.box(0.12, 0.2, 0.12, '#3f6b2a', 0, 1.74, 0).box(0.24, 0.05, 0.1, '#4f8a35', 0.12, 1.82, 0);
+    for (const sx of [-1, 1]) b.push(new THREE.BoxGeometry(0.14, 0.1, 0.07), '#ffd54a', sx * 0.18, 0.98, 0.48, 0, 0, -sx * 0.5);
+    b.box(0.3, 0.07, 0.07, '#ffd54a', 0, 0.68, 0.5)
+      .box(0.1, 0.1, 0.4, '#ff7a1a', 0.52, 0.8, 0.15);
+    eyes('#111111', 1.6);
+    bucket(0.6, 0.55, 0.3);
+  }
+  const o = out(b, 0.4, 1.95);
+  o.geo.scale(0.8, 0.8, 0.8); // kids are smaller than adults
+  o.geo.computeBoundingSphere();
+  o.r = 0.34; o.h = 1.6;
+  return o;
+}
+
 /* ---------- registry ---------- */
 // pts = score; needF = fraction of footprint radius the hole must reach to swallow it
 export const TYPES = {
@@ -586,6 +773,12 @@ export const TYPES = {
   plyoBox: { make: plyoBox, n: 3, pts: 8, needF: 0.85 },
   rower: { make: rower, n: 1, pts: 25, needF: 0.85 },
   athlete: { make: athlete, n: 12, pts: 15, needF: 0.85 },
+  tesla: { make: tesla, n: 8, pts: 70, needF: 0.85 },
+  cybertruck: { make: cybertruck, n: 4, pts: 100, needF: 0.85 },
+  pumpkin: { make: () => pumpkin(false), n: 6, pts: 8, needF: 0.85 },
+  pumpkinBig: { make: () => pumpkin(true), n: 3, pts: 20, needF: 0.85 },
+  tombstone: { make: tombstone, n: 5, pts: 10, needF: 0.85 },
+  trickOrTreater: { make: trickOrTreater, n: 16, pts: 20, needF: 0.85 },
 };
 
 export const MODELS = {};

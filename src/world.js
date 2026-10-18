@@ -458,6 +458,18 @@ export class World {
       for (let i = 0; i < n; i++) { const [x, z] = edgePt(17.3); P('dogWalker', x, z, rand(0, 6.28)); }
     };
 
+    // Halloween: a cluster of carved pumpkins in front of a building, plus costumed trick-or-treaters on the sidewalks
+    const pumpkinsAt = (x, z, sz, spread, chance = 0.7) => {
+      if (R() > chance) return;
+      const n = 1 + ((R() * 3) | 0);
+      for (let i = 0; i < n; i++) {
+        S(R() < 0.25 ? 'pumpkinBig' : 'pumpkin', x + rand(-spread, spread), z + sz * rand(0, 0.9), (sz > 0 ? 0 : Math.PI) + rand(-0.5, 0.5));
+      }
+    };
+    const kids = (n) => {
+      for (let i = 0; i < n; i++) { const [x, z] = edgePt(17.3); P('trickOrTreater', x, z, rand(0, 6.28)); }
+    };
+
     // an RX Gym lot: the building sits at the back, equipment + athletes fill the yard out front
     const gymLot = (sx, sz) => {
       const gx = sx * 8.5;
@@ -468,6 +480,7 @@ export class World {
       S('rower', gx + 3.6, sz * 14.6, Math.PI / 2);
       S('plyoBox', gx + 0.3, sz * 9.6, rand(0, 6)); S('plyoBox', gx + 1.5, sz * 9.7, rand(0, 6));
       for (let i = 0; i < 4; i++) S('kettlebell', gx - 4.8 + i * 0.7, sz * 9.7);
+      pumpkinsAt(gx + 4.3, sz * 9.1, sz, 0.9, 1);
       for (let i = 0; i < 6; i++) {
         const o = this.spawnMover('athlete', cx + gx + rand(-5.5, 5.5), cz + sz * rand(9.6, 15.2), rand(0, 6.28), 'person', { workout: true });
         o.wt = 0;
@@ -475,28 +488,32 @@ export class World {
     };
 
     if (type === 'downtown') {
-      for (const sx of [-1, 1]) for (const sz of [-1, 1]) S('skyscraper', sx * 8.5, sz * 8.5, facing(sx, sz));
-      people(8); dogWalkers(1);
+      for (const sx of [-1, 1]) {
+        for (const sz of [-1, 1]) { S('skyscraper', sx * 8.5, sz * 8.5, facing(sx, sz)); pumpkinsAt(sx * 8.5, sz * 16.1, sz, 5, 0.6); }
+      }
+      people(8); dogWalkers(1); kids(1);
     } else if (type === 'commercial' || type === 'shops') {
       for (const sx of [-1, 1]) {
         for (const sz of [-1, 1]) {
           if (R() < 0.14) { gymLot(sx, sz); continue; }
           const t = type === 'shops' ? 'shop' : R() < 0.55 ? 'office' : 'shop';
           S(t, sx * 8.5, sz * 8.5, facing(sx, sz));
+          pumpkinsAt(sx * 8.5, sz * 15.2, sz, 4, 0.7);
         }
       }
-      people(type === 'shops' ? 9 : 8); dogWalkers(R() < 0.7 ? 2 : 1);
+      people(type === 'shops' ? 9 : 8); dogWalkers(R() < 0.7 ? 2 : 1); kids(R() < 0.6 ? 1 : 0);
     } else if (type === 'residential') {
       for (const sx of [-1, 1]) {
         for (const sz of [-1, 1]) {
           const hx = sx * 8.5, hz = sz * 8.5;
           S('house', hx, hz, facing(sx, sz));
+          pumpkinsAt(hx + (R() < 0.5 ? -3.4 : 3.4), sz * 13.9, sz, 0.8, 0.85);
           for (const [ox, oz] of [[-5.3, -5.3], [5.3, -5.3], [-5.3, 5.3], [5.3, 5.3]]) if (R() < 0.55) S('bush', hx + ox, hz + oz);
-          if (R() < 0.5) S(pick(['car', 'car', 'van']), hx, sz * 14.6, Math.PI / 2);
+          if (R() < 0.5) S(pick(['car', 'car', 'van', 'tesla', 'cybertruck']), hx, sz * 14.6, Math.PI / 2);
         }
       }
       for (const [lx, lz] of [[0, 0], [0, -8.5], [0, 8.5], [-8.5, 0], [8.5, 0]]) if (R() < 0.8) S(pick(['treeOak', 'treeRound', 'treePine']), lx, lz);
-      people(5); dogWalkers(R() < 0.8 ? 2 : 1);
+      people(5); dogWalkers(R() < 0.8 ? 2 : 1); kids(3 + (R() < 0.5 ? 1 : 0));
       for (let i = 0; i < 2; i++) P('person', rand(-1.5, 1.5), rand(-12, 12), rand(0, 6.28));
     } else if (type === 'park') {
       if (R() < 0.75) S('fountain', 0, 0); else S('treeOak', 0, 0);
@@ -512,14 +529,19 @@ export class World {
         S('bush', x, z);
       }
       if (R() < 0.3) S('waterTower', pick([-1, 1]) * 11.5, pick([-1, 1]) * 11.5);
-      people(4); dogWalkers(3);
+      people(4); dogWalkers(3); kids(2);
+      for (let i = 0; i < 5; i++) {
+        S(R() < 0.3 ? 'pumpkinBig' : 'pumpkin', pick([-1, 1]) * rand(2.1, 3.3), rand(-13, 13), rand(0, 6.28));
+      }
+      const gx = pick([-1, 1]) * 9.5, gz = pick([-1, 1]) * 9.5;
+      for (let i = 0; i < 6; i++) S('tombstone', gx + rand(-3.5, 3.5), gz + rand(-3.5, 3.5), (R() < 0.5 ? 0 : Math.PI) + rand(-0.2, 0.2));
       for (let i = 0; i < 7; i++) P('person', rand(-14, 14), rand(-14, 14), rand(0, 6.28));
     }
   }
 
   populateRoads() {
     // parked cars / vans / motorcycles along the kerbs
-    const parkedType = () => { const q = R(); return q < 0.7 ? 'car' : q < 0.88 ? 'van' : 'motorcycleParked'; };
+    const parkedType = () => { const q = R(); return q < 0.5 ? 'car' : q < 0.62 ? 'van' : q < 0.74 ? 'motorcycleParked' : q < 0.9 ? 'tesla' : 'cybertruck'; };
     for (const L of ROADS) {
       for (let t = -WORLD + 8; t < WORLD - 6; t += 9.5) {
         if (ROADS.some((Rd) => Math.abs(t - Rd) < 8.5)) continue;
@@ -539,7 +561,7 @@ export class World {
         for (let i = 0; i < 4; i++) {
           const dir = i % 2 === 0 ? 1 : -1;
           const q = R();
-          const type = q < 0.16 ? 'bus' : q < 0.3 ? 'van' : q < 0.5 ? 'motorcycle' : 'car';
+          const type = q < 0.12 ? 'bus' : q < 0.22 ? 'van' : q < 0.36 ? 'motorcycle' : q < 0.5 ? 'tesla' : q < 0.58 ? 'cybertruck' : 'car';
           const t = rand(-WORLD + 5, WORLD - 5), sp = type === 'motorcycle' ? rand(8, 12) : rand(5, 9);
           let o;
           if (axis === 'z') {

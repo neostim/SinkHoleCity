@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { World, WORLD, MAX_HOLES, ROADS } from './world.js';
 import { hostRoom, joinRoom, normalizeCode } from './net.js';
+import { createMusic } from './music.js';
 
 /* ====================================================================== */
 /*  Setup                                                                 */
@@ -25,14 +26,14 @@ renderer.setPixelRatio(pixelRatio);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-const SKY = 0x9fd3f5;
+const SKY = 0xf1ae82; // Halloween dusk: warm orange haze
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
 scene.fog = new THREE.Fog(SKY, 140, 460);
 
-const camera = new THREE.PerspectiveCamera(48, 1, 0.5, 800);
-scene.add(new THREE.HemisphereLight(0xdcefff, 0x7a8a55, 1.05));
-const sun = new THREE.DirectionalLight(0xfff4de, 1.7);
+const camera = new THREE.PerspectiveCamera(48, 1, 0.5, 1400);
+scene.add(new THREE.HemisphereLight(0xfff0e4, 0x8a7a88, 1.05));
+const sun = new THREE.DirectionalLight(0xffe2c0, 1.65);
 const SUN_DIR = new THREE.Vector3(-0.55, 1, 0.35).normalize();
 sun.castShadow = true;
 sun.shadow.mapSize.set(IS_TOUCH ? 1024 : 2048, IS_TOUCH ? 1024 : 2048);
@@ -42,21 +43,51 @@ scene.add(sun, sun.target);
 
 const world = new World(scene, renderer);
 
+// Camera distance multiplier: small and portrait screens (phones) see much less of the city for the same zoom,
+// so pull the camera back there. Desktop landscape stays at 1.
+let viewMul = 1, viewCur = 1;
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  const aspect = w / h;
+  const aspectBoost = aspect < 1.3 ? Math.pow(1.3 / aspect, 0.8) : 1; // portrait: narrow field of view
+  const sizeBoost = clamp(1 + ((760 - Math.min(w, h)) / 760) * 0.55, 1, 1.4); // tiny screens: everything looks small
+  viewMul = clamp(aspectBoost * sizeBoost, 1, 2.3);
 }
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 200));
 resize();
+viewCur = viewMul;
 if (IS_TOUCH) document.body.classList.add('touch');
 
 /* ====================================================================== */
 /*  Audio (tiny synth, created on first interaction)                      */
 /* ====================================================================== */
 let audio = null, muted = false, lastBlip = 0;
+
+// Background music: generative loop (see music.js). Plays only during a round; toggle with the speaker button or M.
+const music = createMusic();
+let musicOn = true;
+try { musicOn = localStorage.getItem('sinkhole-music') !== 'off'; } catch (e) {}
+function syncMusic() {
+  if (musicOn && state === 'playing' && audio && !document.hidden) music.start(audio);
+  else music.stop();
+}
+function updateMusicButtons() {
+  $('music-btn').classList.toggle('off', !musicOn);
+  $('music-btn').setAttribute('aria-pressed', String(musicOn));
+  $('music-menu').textContent = 'Music: ' + (musicOn ? 'On' : 'Off');
+}
+function toggleMusic() {
+  musicOn = !musicOn;
+  try { localStorage.setItem('sinkhole-music', musicOn ? 'on' : 'off'); } catch (e) {}
+  initAudio();
+  updateMusicButtons();
+  syncMusic();
+}
+document.addEventListener('visibilitychange', syncMusic);
 function initAudio() {
   if (!audio) {
     try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; }
@@ -278,6 +309,7 @@ function showPlaying() {
   $('hud').classList.remove('hidden');
   $('banner').classList.add('hidden');
   updateRoomChip();
+  syncMusic();
 }
 
 function readName(fallback = 'You') {
@@ -311,6 +343,7 @@ function endGame() {
   $('banner').classList.add('hidden');
   for (const h of holes) if (h.human) h.kill();
   updateRoomChip();
+  syncMusic();
   if (role === 'host') link.send({ t: 'end', s: holes.map((h) => Math.floor(h.score)) });
 }
 
@@ -534,6 +567,7 @@ function backToMenu() {
   $('banner').classList.add('hidden');
   $('menu').classList.remove('hidden');
   camSubject = bots[0];
+  syncMusic();
   // go back to an offline attract-mode city behind the menu
   startRound(false);
 }
@@ -548,7 +582,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   keys.add(e.code);
-  if (e.code === 'KeyM') { muted = !muted; }
+  if (e.code === 'KeyM') toggleMusic();
   if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
 });
 window.addEventListener('keyup', (e) => keys.delete(e.code));
@@ -900,17 +934,19 @@ function frame() {
     cam.x += (sub.x - cam.x) * k; cam.z += (sub.z - cam.z) * k;
     cam.r += (sub.r - cam.r) * Math.min(1, dt * 2.5);
   }
-  const H = 12 + cam.r * 4.3, Bk = H * 0.42;
+  viewCur += (viewMul - viewCur) * Math.min(1, dt * 3);
+  scene.fog.near = 140 * viewCur; scene.fog.far = 460 * viewCur;
+  const H = (12 + cam.r * 4.3) * viewCur, Bk = H * 0.42;
   camera.position.set(cam.x, H, cam.z + Bk);
   camera.lookAt(cam.x, 0, cam.z - cam.r * 0.15);
 
   const ss = Math.round((H * 1.25 + 14) / 4) * 4;
-  sun.position.set(cam.x + SUN_DIR.x * 120, SUN_DIR.y * 120, cam.z + SUN_DIR.z * 120);
+  sun.position.set(cam.x + SUN_DIR.x * 160, SUN_DIR.y * 160, cam.z + SUN_DIR.z * 160);
   sun.target.position.set(cam.x, 0, cam.z);
   if (ss !== lastShadowSize) {
     lastShadowSize = ss;
     const c = sun.shadow.camera;
-    c.left = -ss; c.right = ss; c.top = ss; c.bottom = -ss; c.near = 10; c.far = 320;
+    c.left = -ss; c.right = ss; c.top = ss; c.bottom = -ss; c.near = 10; c.far = 520;
     c.updateProjectionMatrix();
   }
 
@@ -929,6 +965,9 @@ $('play').addEventListener('click', startSolo);
 $('host').addEventListener('click', startHosting);
 $('join').addEventListener('click', () => startJoining($('code').value));
 $('room-copy').addEventListener('click', copyInvite);
+$('music-btn').addEventListener('click', toggleMusic);
+$('music-menu').addEventListener('click', toggleMusic);
+updateMusicButtons();
 $('again').addEventListener('click', () => {
   initAudio();
   if (role === 'guest') return;
@@ -956,7 +995,7 @@ frame();
 
 // handy for debugging / automated checks
 window.__game = {
-  world, holes, bots, human0, human1, camera, scene, renderer, endGame, startSolo, startHosting, startJoining,
+  world, holes, bots, human0, human1, camera, scene, renderer, endGame, music, toggleMusic, startSolo, startHosting, startJoining,
   get me() { return me; }, get role() { return role; }, get state() { return state; }, get link() { return link; },
   get timeLeft() { return timeLeft; },
 };

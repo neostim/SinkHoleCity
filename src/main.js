@@ -1158,8 +1158,9 @@ function frame() {
   if (fpsView) {
     // first person: eye height, looking where you are heading
     if (me.runObj) me.runObj.mesh.visible = false;
-    fpsBob += dt * Math.abs(me.rv) * 1.1;
-    camera.position.set(me.x, 1.7 + Math.sin(fpsBob * 9) * 0.05, me.z);
+    // very gentle, slow head-bob (about two steps a second at full speed); the look target stays level so nothing shakes
+    fpsBob += dt * (Math.abs(me.rv) / RUN_SPEED) * 11;
+    camera.position.set(me.x, 1.7 + Math.sin(fpsBob) * 0.012, me.z);
     camera.lookAt(me.x + Math.sin(me.yaw) * 10, 1.3, me.z + Math.cos(me.yaw) * 10);
     cam.x = me.x; cam.z = me.z; cam.r = me.r;
     scene.fog.near = 120; scene.fog.far = 430;

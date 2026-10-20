@@ -132,6 +132,14 @@ vec3 groundColor(vec2 p, float px) {
 }
 `;
 
+/* Glowing pedestrians: a pulsing light beam + ground halo. Swallowing one swaps the eater into a first-person runner. */
+const GLOW = {
+  beam: new THREE.CylinderGeometry(0.5, 0.65, 34, 14, 1, true).translate(0, 17, 0),
+  ring: new THREE.RingGeometry(0.8, 2.1, 32).rotateX(-Math.PI / 2),
+  beamMat: new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.34, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }),
+  ringMat: new THREE.MeshBasicMaterial({ color: 0xfff2a8, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }),
+};
+
 export class World {
   constructor(scene, renderer) {
     this.scene = scene;
@@ -141,6 +149,9 @@ export class World {
     this.falling = [];
     this.byId = new Map();
     this.planes = [];
+    this.glowSet = new Set();
+    this.onGlow = null; // host hook: (object, on) -> stream to the guest
+    this.glowT = 0;
     this.planeRespawn = [];
     this.stands = STANDS.map(() => null);
     this.runway = null; // plane currently holding the runway
@@ -246,7 +257,7 @@ export class World {
     this.nextId = Math.max(this.nextId, id + 1);
     const o = {
       id, vi, type, mesh, x, z, rotY, r: m.r, h: m.h, pts: T.pts, need: m.r * T.needF,
-      state: 0, cell: 0, kind: 'static', vy: 0, hole: null, workout: false,
+      state: 0, cell: 0, kind: 'static', vy: 0, hole: null, workout: false, box: m.box || null, glow: false, controlled: false,
     };
     this.scene.add(mesh);
     this.gridAdd(o);
@@ -363,6 +374,7 @@ export class World {
   updateMovers(dt, t, holes) {
     const lim = WORLD - 1.5;
     for (const o of this.movers) {
+      if (o.controlled) continue; // a player is steering this person (runner mode)
       if (o.kind === 'person') {
         let fx = 0, fz = 0, flee = false;
         for (const h of holes) {
@@ -427,6 +439,73 @@ export class World {
       if (this.onSpawn) this.onSpawn(o);
       return;
     }
+  }
+
+  /* ---------------- glowing people ---------------- */
+  setGlow(o, on) {
+    if (!o || on === o.glow) return;
+    o.glow = on;
+    if (on) {
+      const b = new THREE.Mesh(GLOW.beam, GLOW.beamMat), r = new THREE.Mesh(GLOW.ring, GLOW.ringMat);
+      r.position.y = 0.06; b.renderOrder = 4; r.renderOrder = 4;
+      b.frustumCulled = false;
+      o.glowMeshes = [b, r];
+      o.mesh.add(b, r);
+      this.glowSet.add(o);
+    } else {
+      if (o.glowMeshes) for (const m of o.glowMeshes) o.mesh.remove(m);
+      o.glowMeshes = null;
+      this.glowSet.delete(o);
+    }
+    if (this.onGlow) this.onGlow(o, on);
+  }
+
+  // guest: make the set of glowing people exactly `ids` (used when joining mid-round)
+  setGlowSet(ids) {
+    const want = new Set(ids);
+    for (const o of [...this.glowSet]) if (!want.has(o.id)) this.setGlow(o, false);
+    for (const id of want) this.setGlow(this.byId.get(id), true);
+  }
+
+  updateGlow(t) {
+    GLOW.beamMat.opacity = 0.26 + 0.12 * Math.sin(t * 3.6);
+    GLOW.ringMat.opacity = 0.55 + 0.25 * Math.sin(t * 5.2);
+  }
+
+  // host: keep ~14 pedestrians glowing across the city
+  maintainGlow(dt) {
+    this.glowT -= dt;
+    if (this.glowT > 0) return;
+    this.glowT = 1.5;
+    if (this.glowSet.size >= 14 || !this.movers.length) return;
+    for (let i = 0; i < 20; i++) {
+      const o = this.movers[(Math.random() * this.movers.length) | 0];
+      if (o.type !== 'person' || o.state !== 0 || o.glow || o.controlled || o.workout || o.mesh.rotation.z > 0.5) continue;
+      this.setGlow(o, true);
+      return;
+    }
+  }
+
+  // push a walking point out of nearby building footprints; returns the corrected [x, z]
+  collide(x, z, rad) {
+    let px = x, pz = z;
+    this.query(x, z, 16, (o) => {
+      if (!o.box || o.state !== 0) return;
+      const c = Math.cos(o.rotY), s = Math.sin(o.rotY);
+      const dx = px - o.x, dz = pz - o.z;
+      const lx = dx * c - dz * s, lz = dx * s + dz * c; // into the building's own frame
+      const [hx, hz] = o.box;
+      const cx = Math.max(-hx, Math.min(hx, lx)), cz = Math.max(-hz, Math.min(hz, lz));
+      let ox = lx - cx, oz = lz - cz, d = Math.hypot(ox, oz), nx, nz, push;
+      if (d > 1e-4) { if (d >= rad) return; nx = ox / d; nz = oz / d; push = rad - d; }
+      else { // centre is inside the box: leave through the nearest side
+        const ex = hx - Math.abs(lx), ez = hz - Math.abs(lz);
+        if (ex < ez) { nx = Math.sign(lx) || 1; nz = 0; push = ex + rad; } else { nx = 0; nz = Math.sign(lz) || 1; push = ez + rad; }
+      }
+      const wx = nx * push, wz = nz * push;
+      px += c * wx + s * wz; pz += -s * wx + c * wz;
+    });
+    return [px, pz];
   }
 
   /* ---------------- airport traffic ---------------- */
@@ -569,6 +648,7 @@ export class World {
     this.movers.length = 0;
     this.falling.length = 0;
     this.planes.length = 0;
+    this.glowSet.clear();
     this.planeRespawn.length = 0;
     this.stands = STANDS.map(() => null);
     this.runway = null;

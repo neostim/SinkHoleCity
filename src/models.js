@@ -112,7 +112,8 @@ class B {
   }
 }
 
-const out = (b, r, h, mat = 'vc') => ({ geo: b.build(), r, h, mat });
+// box = [halfWidth, halfDepth] footprint: first-person runners can't walk through these
+const out = (b, r, h, mat = 'vc', box = null) => ({ geo: b.build(), r, h, mat, box });
 
 /* ---------- palettes ---------- */
 const SKIN = ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac', '#f5cba7'];
@@ -275,7 +276,7 @@ function house() {
   }
   // chimney
   b.box(0.8, 2.2, 0.8, '#8a4b3a', w * 0.25, hgt + 0.6, -d * 0.2);
-  return out(b, Math.hypot(w, d) / 2, hgt + 2.6);
+  return out(b, Math.hypot(w, d) / 2, hgt + 2.6, 'vc', [w / 2, d / 2]);
 }
 
 function shop() {
@@ -294,7 +295,7 @@ function shop() {
   b.box(w * 0.5, 1.1, 0.25, pick(['#e63946', '#1d3557', '#2a9d8f', '#ffb703']), 0, h - 1.3, d / 2 + 0.12)
     .box(2.2, 1, 1.6, '#9aa0a6', -w * 0.25, h, -d * 0.2).box(1.6, 0.9, 1.2, '#9aa0a6', w * 0.2, h, d * 0.15)
     .box(w + 0.4, 0.3, d + 0.4, '#6b7280', 0, h, 0);
-  return out(b, Math.hypot(w, d) / 2, h + 1.2, 'bld');
+  return out(b, Math.hypot(w, d) / 2, h + 1.2, 'bld', [w / 2, d / 2]);
 }
 
 function office() {
@@ -306,7 +307,7 @@ function office() {
     .facade(w * 0.55, 3, d * 0.55, tint, 0, h + 0.4, 0)
     .box(2, 1.2, 2, '#9aa0a6', w * 0.3, h + 0.4, d * 0.3)
     .cyl(0.08, 0.1, 4, '#cc3333', -w * 0.15, h + 3.4, 0);
-  return out(b, Math.hypot(w, d) / 2, h + 7, 'bld');
+  return out(b, Math.hypot(w, d) / 2, h + 7, 'bld', [w / 2, d / 2]);
 }
 
 function skyscraper() {
@@ -321,7 +322,7 @@ function skyscraper() {
     .box(w * 0.5 + 0.4, 0.4, d * 0.5 + 0.4, '#5f6672', 0, 40, 0)
     .cyl(0.12, 0.25, 9, '#d8d8d8', 0, 40.4, 0)
     .sph(0.3, '#ff3b30', 0, 49.6, 0);
-  return out(b, Math.hypot(w, d) / 2, 50, 'bld');
+  return out(b, Math.hypot(w, d) / 2, 50, 'bld', [w / 2, d / 2]);
 }
 
 function fountain() {
@@ -331,7 +332,7 @@ function fountain() {
     .cyl(0.6, 0.8, 1.6, '#c9c9c2', 0, 0.5, 0, 12)
     .cyl(1.4, 0.5, 0.35, '#c9c9c2', 0, 2.0, 0, 14)
     .sph(0.6, '#9be2ff', 0, 2.7, 0, 1.3);
-  return out(b, 3.1, 3.4);
+  return out(b, 3.1, 3.4, 'vc', [3, 3]);
 }
 
 function waterTower() {
@@ -468,7 +469,7 @@ function gym() {
     .box(1.7, 2.6, 0.14, '#1c1c1f', 3.9, 0, d / 2 + 0.07);
   for (let i = 1; i < 7; i++) b.box(6, 0.05, 0.16, '#8b8f97', -1.6, i * 0.48, d / 2 + 0.08);
   b.box(2.6, 0.9, 1.4, '#9aa0a6', -3, h + 0.35, 0).box(1.6, 0.7, 1.2, '#9aa0a6', 2.5, h + 0.35, 1);
-  const o = out(b, Math.hypot(w, d) / 2, h + 1.4, 'bld');
+  const o = out(b, Math.hypot(w, d) / 2, h + 1.4, 'bld', [w / 2, d / 2]);
   o.sign = [0, h - 1.0, d / 2 + 0.12];
   return o;
 }
@@ -819,7 +820,7 @@ function terminal() {
     .box(w - 1, 1.4, d - 1, '#cfd6dc', 0, h + 0.4, 0)
     .box(w * 0.8, 0.5, 2.6, '#27323f', 0, 3.2, -d / 2 - 1.3) // canopy over the doors (planes side)
     .box(0.3, 3.2, 0.3, '#9aa0a8', -w * 0.4, 0, -d / 2 - 2.4).box(0.3, 3.2, 0.3, '#9aa0a8', w * 0.4, 0, -d / 2 - 2.4);
-  return out(b, Math.hypot(w, d) / 2, h + 1.8, 'bld');
+  return out(b, Math.hypot(w, d) / 2, h + 1.8, 'bld', [w / 2, d / 2]);
 }
 
 function hangar() {
@@ -833,7 +834,7 @@ function hangar() {
   rg.rotateY(Math.PI / 4);
   rg.scale((w / 2 + 0.5) / 0.7071, 2.6, (d / 2 + 0.5) / 0.7071);
   b.push(rg, '#6b7684', 0, h + 1.3, 0);
-  return out(b, Math.hypot(w, d) / 2, h + 2.6);
+  return out(b, Math.hypot(w, d) / 2, h + 2.6, 'vc', [w / 2, d / 2]);
 }
 
 function tower() {
@@ -842,7 +843,7 @@ function tower() {
     .cyl(3.4, 2.2, 1.2, '#d8d8d8', 0, 22, 0, 14).cyl(3.5, 3.5, 2.4, '#27414f', 0, 23.2, 0, 14)
     .cyl(3.8, 3.8, 0.4, '#d8d8d8', 0, 25.6, 0, 14).cone(3.6, 1.4, '#c1121f', 0, 26, 0, 14)
     .cyl(0.08, 0.1, 5, '#cc3333', 0, 27.4, 0, 6);
-  return out(b, 3.8, 32);
+  return out(b, 3.8, 32, 'vc', [2.6, 2.6]);
 }
 
 /* ---------- registry ---------- */

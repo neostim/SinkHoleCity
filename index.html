@@ -81,6 +81,18 @@
   #toast { position: fixed; left: 50%; bottom: calc(var(--sb) + 8px); transform: translateX(-50%); padding: 10px 20px; font-weight: 600; z-index: 5; max-width: 90vw; text-align: center; }
   #over-wait { margin: 14px 0 0; opacity: .85; }
 
+  /* runner mode (first person) */
+  #runner { position: fixed; left: 50%; top: calc(var(--st) + 66px); transform: translateX(-50%); text-align: center; pointer-events: none; text-shadow: 0 3px 0 rgba(0,0,0,.35), 0 0 16px rgba(0,0,0,.35); z-index: 3; }
+  #runner .rt-title { font-size: 40px; font-weight: 700; color: #ffe066; letter-spacing: .06em; line-height: 1; animation: runPulse .7s infinite alternate; }
+  #runner .rt-count { font-size: 56px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
+  #runner .rt-hint { font-size: 14px; opacity: .92; margin-top: 4px; }
+  @keyframes runPulse { to { transform: scale(1.1); } }
+  #danger { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, rgba(255,0,0,0) 38%, rgba(255,20,20,.6) 100%); transition: opacity .15s; z-index: 2; }
+  #flash { position: fixed; inset: 0; pointer-events: none; background: #fff; opacity: 0; z-index: 6; }
+  #flash.go { animation: flashGo .6s ease-out; }
+  @keyframes flashGo { 0% { opacity: .9; } 100% { opacity: 0; } }
+  body.runner #help { display: none; }
+
   /* music toggle */
   .icon-btn { position: absolute; right: var(--sr); bottom: calc(var(--sb) + 158px); width: 44px; height: 44px; padding: 0; display: grid; place-items: center; color: #fff; pointer-events: auto; cursor: pointer; border-radius: 14px; box-shadow: none; touch-action: manipulation; font-size: 0; }
   .icon-btn:hover { transform: none; background: rgba(40, 70, 96, 0.85); }
@@ -151,6 +163,9 @@
 <div id="room" class="card hidden"><span class="lbl">Room</span> <b id="room-code">…</b> <span id="room-state"></span> <button id="room-copy" class="ghost mini">Copy invite link</button></div>
 <div id="toast" class="card hidden"></div>
 <div id="banner" class="card hidden"><span id="banner-text"></span><small>Respawning…</small></div>
+<div id="runner" class="hidden"><div class="rt-title">RUN!</div><div class="rt-count"><span id="runner-t">20</span>s</div><div class="rt-hint">Stay away from the black holes!<br><span class="kb-only"><kbd>W</kbd><kbd>S</kbd> run &nbsp;·&nbsp; <kbd>A</kbd><kbd>D</kbd> turn</span><span class="touch-only">Drag up to run, left / right to turn</span></div></div>
+<div id="danger"></div>
+<div id="flash"></div>
 <div id="joy" class="hidden"><div id="joy-knob"></div></div>
 
 <div id="menu" class="overlay">

@@ -13,6 +13,10 @@ Peer-to-peer over WebRTC via [PeerJS](https://peerjs.com), so it works on static
 
 The host's browser runs the whole simulation (bots, pedestrians, traffic) and streams state to the guest, so the host needs to keep the tab open. If the host leaves, the room ends. Only the free PeerJS broker is used to introduce the two browsers; gameplay data flows directly between them.
 
+## Glowing people (runner mode)
+
+A few pedestrians glow (yellow dots on the minimap). Swallow one with your hole and you **swap places with them**: the camera drops to first person at street level and you have **20 seconds** to avoid every black hole. Survive for a score bonus; get caught and you lose 25% of your score and respawn as a hole. Controls while running: `W`/`S` run, `A`/`D` turn (or drag up / left / right on touch). Bots can't swallow glowing people, but they will hunt the runner.
+
 ## Play locally
 
 Open `index.html` directly, or run `node serve.js` and visit http://localhost:8123.

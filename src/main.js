@@ -17,6 +17,8 @@ const MAX_R = 18;
 const BOT_COUNT = 11; // the city is 4x bigger now, so more bots to fill it
 const SNAP_INTERVAL = 0.05; // host -> guest state updates (20 Hz)
 const INPUT_INTERVAL = 1 / 30; // guest -> host steering updates
+const RUN_TIME = 20; // seconds spent as a pedestrian after swallowing a glowing person
+const RUN_SPEED = 9.6, RUN_BACK = 3.5, RUN_TURN = 2.7;
 
 const renderer = new THREE.WebGLRenderer({ canvas: $('game'), antialias: true });
 // iPads have huge, high-DPI screens: start at a lower render scale and let the adaptive loop tune it
@@ -46,8 +48,11 @@ const world = new World(scene, renderer);
 // Camera distance multiplier: small and portrait screens (phones) see much less of the city for the same zoom,
 // so pull the camera back there. Desktop landscape stays at 1.
 let viewMul = 1, viewCur = 1;
+let sizedW = 0, sizedH = 0;
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
+  if (!w || !h) return; // page loaded in a hidden/zero-size view: retry from the render loop
+  sizedW = w; sizedH = h;
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
@@ -143,6 +148,8 @@ class Hole {
     this.respawn = 0;
     this.keep = 0;
     this.pulse = 0;
+    this.mode = 'hole'; // 'hole' or 'runner' (a first-person pedestrian)
+    this.runObj = null; this.lastRunObj = null; this.runT = 0; this.yaw = 0; this.rv = 0; this.shield = 0;
 
     this.pit = new THREE.Mesh(pitGeo, pitMat);
     this.ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
@@ -252,7 +259,7 @@ let camSubject = bots[0];
 const cam = { r: START_R, x: 0, z: 0 };
 
 // host -> guest event streams (flushed with each snapshot) + full log for late joiners
-const evOut = [], spOut = [], killOut = [];
+const evOut = [], spOut = [], killOut = [], glOut = [], rvOut = [];
 const roundLog = { eaten: [], spawned: [] };
 let snapTimer = 0;
 const guestInput = { x: 0, z: 0, t: 0 };
@@ -263,6 +270,128 @@ world.onSpawn = (o) => {
   const e = [o.id, o.type, o.vi, Math.round(o.x * 10), Math.round(o.z * 10)];
   spOut.push(e); roundLog.spawned.push(e);
 };
+
+world.onGlow = (o, on) => { if (role === 'host') glOut.push([o.id, on ? 1 : 0]); };
+
+/* ====================================================================== */
+/*  Runner mode: swallow a glowing person and you become a pedestrian      */
+/* ====================================================================== */
+function flash() {
+  const el = $('flash');
+  el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');
+}
+
+function enterRunnerView() {
+  camera.fov = 74; camera.updateProjectionMatrix();
+  $('runner').classList.remove('hidden');
+  document.body.classList.add('runner');
+  flash();
+  blip(440, 0.18, 'triangle', 0.12); setTimeout(() => blip(660, 0.2, 'triangle', 0.12), 120);
+  fpsBob = 0;
+}
+
+function exitRunnerView(obj) {
+  camera.fov = 48; camera.updateProjectionMatrix();
+  $('runner').classList.add('hidden');
+  $('danger').style.opacity = 0;
+  document.body.classList.remove('runner');
+  if (obj) obj.mesh.visible = true;
+  cam.x = me.x; cam.z = me.z; cam.r = me.r;
+  flash();
+}
+
+function runnerInput() {
+  let f = 0, tn = 0;
+  if (keys.has('KeyW') || keys.has('ArrowUp')) f += 1;
+  if (keys.has('KeyS') || keys.has('ArrowDown')) f -= 1;
+  if (keys.has('KeyD') || keys.has('ArrowRight')) tn += 1;
+  if (keys.has('KeyA') || keys.has('ArrowLeft')) tn -= 1;
+  if (f || tn) return [f, tn];
+  if (pointer.down) { // drag up = run forward, drag sideways = turn
+    let vx, vy, full;
+    if (pointer.touch) { vx = pointer.x - pointer.ox; vy = pointer.y - pointer.oy; full = 50; }
+    else { vx = pointer.x - window.innerWidth / 2; vy = pointer.y - window.innerHeight / 2; full = Math.min(window.innerWidth, window.innerHeight) * 0.22; }
+    const m = Math.hypot(vx, vy);
+    if (m > 10) { const k = Math.min(1, (m - 10) / full); return [-(vy / m) * k, (vx / m) * k]; }
+  }
+  return [0, 0];
+}
+
+function runnerStep(h, f, tn, dt) {
+  h.yaw -= tn * RUN_TURN * dt;
+  const target = f >= 0 ? f * RUN_SPEED : f * RUN_BACK;
+  h.rv += (target - h.rv) * Math.min(1, dt * 8);
+  let [nx, nz] = world.collide(h.x + Math.sin(h.yaw) * h.rv * dt, h.z + Math.cos(h.yaw) * h.rv * dt, 0.45);
+  h.x = clamp(nx, -WORLD + 1.5, WORLD - 1.5);
+  h.z = clamp(nz, -WORLD + 1.5, WORLD - 1.5);
+}
+
+// the pedestrian body that other players (and the holes) see while someone is running
+function syncRunnerObject(h) {
+  const o = h.runObj;
+  if (!o) return;
+  o.x = h.x; o.z = h.z;
+  const moving = Math.abs(h.rv) > 0.5;
+  o.mesh.position.set(h.x, moving ? Math.abs(Math.sin(t * 15)) * 0.12 : 0, h.z);
+  o.mesh.rotation.y = h.yaw;
+  o.mesh.rotation.z = moving ? Math.sin(t * 15) * 0.09 : 0;
+  world.relocate(o);
+}
+
+function startRunner(h, o) {
+  world.setGlow(o, false);
+  o.controlled = true; o.controlledBy = holes.indexOf(h); o.vx = o.vz = 0;
+  h.mode = 'runner'; h.runObj = h.lastRunObj = o; h.runT = RUN_TIME; h.rv = 0;
+  h.x = h.sx = o.x; h.z = h.sz = o.z;
+  let near = null, nd = 1e9;
+  for (const b of holes) {
+    if (b === h || !b.alive) continue;
+    const d = Math.hypot(b.x - h.x, b.z - h.z);
+    if (d < nd) { nd = d; near = b; }
+  }
+  h.yaw = near ? Math.atan2(h.x - near.x, h.z - near.z) : o.mesh.rotation.y; // start by facing away from the closest hole
+  h.kill(); h.respawn = 0;
+  guestInput.x = guestInput.z = 0;
+  if (h === me) enterRunnerView();
+}
+
+function onRunnerResult(h, survived, amount, by) {
+  if (h !== me) return;
+  toast(survived ? `You survived! +${amount} points` : `Caught${by ? ' by ' + by.name : ''}! -${amount} points`, 3800);
+  if (survived) { [523, 659, 784].forEach((f, i) => setTimeout(() => blip(f, 0.25, 'triangle', 0.13), i * 110)); }
+  else blip(110, 0.55, 'sawtooth', 0.13);
+}
+
+function endRunner(h, survived, by) {
+  const o = h.runObj;
+  h.mode = 'hole'; h.runObj = null; h.rv = 0;
+  if (o) { o.controlled = false; o.controlledBy = undefined; }
+  let amount;
+  if (survived) {
+    amount = 250 + Math.floor(h.score * 0.15);
+    h.score += amount;
+    if (o) { o.wt = 0.5; o.vx = o.vz = 0; o.mesh.rotation.z = 0; }
+    h.spawnAt(h.x, h.z, h.score); // the hole comes back right where the runner stood
+  } else {
+    amount = Math.floor(h.score * 0.25);
+    h.score -= amount;
+    const [x, z] = randomSpawn();
+    h.spawnAt(x, z, h.score);
+  }
+  h.shield = 2.5;
+  if (role === 'host') rvOut.push([holes.indexOf(h), survived ? 1 : 0, amount, by ? holes.indexOf(by) : -1]);
+  onRunnerResult(h, survived, amount, by);
+  if (h === me) exitRunnerView(o);
+}
+
+// drop any running state without scoring (round over, left the room, new round...)
+function cleanupRunner(h) {
+  if (h.mode !== 'runner') return;
+  const o = h.runObj;
+  h.mode = 'hole'; h.runObj = null;
+  if (o) { o.controlled = false; o.controlledBy = undefined; o.mesh.visible = true; }
+  if (h === me) exitRunnerView(o);
+}
 
 function randomSpawn() {
   for (let tries = 0; tries < 40; tries++) {
@@ -281,8 +410,9 @@ function setLocal(h) {
 
 // Host / solo: generate a fresh city and spawn everybody.
 function startRound(withPlayer) {
+  for (const h of holes) { cleanupRunner(h); h.shield = 0; }
   world.generate();
-  evOut.length = spOut.length = killOut.length = 0;
+  evOut.length = spOut.length = killOut.length = glOut.length = rvOut.length = 0;
   roundLog.eaten.length = roundLog.spawned.length = 0;
   timeLeft = ROUND_TIME;
   for (const h of holes) { h.kill(); h.respawn = 0; h.keep = 0; }
@@ -299,6 +429,8 @@ function startRound(withPlayer) {
     human1.spawnAt(x, z, 0);
   }
   for (const b of bots) { const [x, z] = randomSpawn(); b.spawnAt(x, z, 0); b.target = null; }
+  for (let i = 0; i < 14; i++) { world.glowT = 0; world.maintainGlow(0.001); } // scatter the glowing people
+  glOut.length = 0;
   if (role === 'host' && link && link.connected) sendStart();
 }
 
@@ -310,6 +442,12 @@ function showPlaying() {
   $('banner').classList.add('hidden');
   updateRoomChip();
   syncMusic();
+  try {
+    if (!localStorage.getItem('sinkhole-glow-hint')) {
+      localStorage.setItem('sinkhole-glow-hint', '1');
+      setTimeout(() => toast('Glowing people (yellow dots on the map): swallow one to swap places and run for 20 seconds!', 7000), 1500);
+    }
+  } catch (e) {}
 }
 
 function readName(fallback = 'You') {
@@ -335,6 +473,7 @@ function endGame() {
   $('over-board').innerHTML = ranked
     .map((h, i) => `<li class="${h === me ? 'me' : ''}"><span class="rk">${i + 1}</span><span class="dot" style="background:${h.cssColor}"></span><span class="nm">${escapeHtml(h.name)}</span><span class="sc">${Math.floor(h.score).toLocaleString()}</span></li>`)
     .join('');
+  for (const h of holes) cleanupRunner(h);
   const guest = role === 'guest';
   $('again').classList.toggle('hidden', guest);
   $('over-wait').classList.toggle('hidden', !guest);
@@ -378,6 +517,7 @@ function leaveRoom() {
   if (link) { try { link.close(); } catch (e) {} }
   link = null;
   role = 'solo';
+  cleanupRunner(human1);
   human1.kill(); human1.respawn = 0;
   setLocal(human0);
   updateRoomChip();
@@ -407,6 +547,7 @@ function startHosting() {
     onData: onHostData,
     onGuestLeft: () => {
       toast(`${human1.name} left the game`);
+      cleanupRunner(human1);
       human1.kill(); human1.respawn = 0;
       updateRoomChip();
     },
@@ -446,7 +587,8 @@ function sendStart() {
     t: 'start',
     seed: world.seed,
     time: timeLeft,
-    holes: holes.map((h) => [h.name, h.hex, h.alive ? 1 : 0, h.x, h.z, h.score]),
+    holes: holes.map((h) => [h.name, h.hex, h.alive ? 1 : 0, h.x, h.z, h.score, h.mode === 'runner' ? 1 : 0, h.yaw, h.runT, h.runObj ? h.runObj.id : -1]),
+    glow: [...world.glowSet].map((o) => o.id),
     eaten: roundLog.eaten,
     spawned: roundLog.spawned,
   });
@@ -462,12 +604,12 @@ function sendSnapshot() {
   link.send({
     t: 's',
     tm: timeLeft,
-    h: holes.map((h) => [h.alive ? 1 : 0, Math.round(h.x * 10), Math.round(h.z * 10), Math.round(h.r * 100), Math.floor(h.score)]),
+    h: holes.map((h) => [h.alive ? 1 : 0, Math.round(h.x * 10), Math.round(h.z * 10), Math.round(h.r * 100), Math.floor(h.score), h.mode === 'runner' ? 1 : 0, Math.round(h.yaw * 100), Math.round(h.runT * 10), h.runObj ? h.runObj.id : -1]),
     m: movers,
     pl: world.planeSnapshot(),
-    e: evOut.slice(), sp: spOut.slice(), k: killOut.slice(),
+    e: evOut.slice(), sp: spOut.slice(), k: killOut.slice(), gl: glOut.slice(), rv: rvOut.slice(),
   });
-  evOut.length = spOut.length = killOut.length = 0;
+  evOut.length = spOut.length = killOut.length = glOut.length = rvOut.length = 0;
 }
 
 /* ---- guest ---- */
@@ -519,13 +661,17 @@ function applyStart(m) {
   world.generate(m.seed);
   for (const [id, type, vi, x, z] of m.spawned) world.spawnMover(type, x / 10, z / 10, rand(0, 6.28), 'person', { id, vi });
   for (const id of m.eaten) world.removeInstant(id);
+  world.setGlowSet(m.glow || []);
   timeLeft = m.time;
-  m.holes.forEach(([name, hex, alive, x, z, score], i) => {
+  for (const h of holes) cleanupRunner(h);
+  setLocal(human1);
+  m.holes.forEach(([name, hex, alive, x, z, score, runner, yaw, runT, ro], i) => {
     const h = holes[i];
     h.setName(name); h.setColor(hex);
-    if (alive) h.spawnAt(x, z, score); else { h.kill(); h.score = score; }
+    if (alive) h.spawnAt(x, z, score); else { h.kill(); h.score = score; h.x = h.sx = x; h.z = h.sz = z; }
+    if (runner) { h.mode = 'runner'; h.yaw = yaw; h.runT = runT; h.rv = 0; h.runObj = h.lastRunObj = ro >= 0 ? world.byId.get(ro) || null : null; }
   });
-  setLocal(human1);
+  if (human1.mode === 'runner') enterRunnerView();
   cam.x = human1.x; cam.z = human1.z; cam.r = human1.r;
   evOut.length = 0;
   showPlaying();
@@ -534,10 +680,19 @@ function applyStart(m) {
 function applySnapshot(m) {
   timeLeft = m.tm;
   m.h.forEach((a, i) => {
-    const h = holes[i], alive = !!a[0];
+    const h = holes[i], alive = !!a[0], mode = a[5] ? 'runner' : 'hole';
     if (alive && !h.alive) h.spawnAt(a[1] / 10, a[2] / 10, a[4]);
     else if (!alive && h.alive) h.kill();
-    h.sx = a[1] / 10; h.sz = a[2] / 10; h.sr = a[3] / 100; h.score = a[4];
+    h.sx = a[1] / 10; h.sz = a[2] / 10; h.sr = a[3] / 100; h.score = a[4]; h.runT = a[7] / 10;
+    h.runObj = a[8] >= 0 ? world.byId.get(a[8]) || null : null;
+    if (h.runObj) h.lastRunObj = h.runObj;
+    if (mode !== h.mode) { // swapped between hole and runner
+      h.mode = mode;
+      if (mode === 'runner') {
+        h.x = h.sx; h.z = h.sz; h.yaw = a[6] / 100; h.rv = 0;
+        if (h === me) enterRunnerView();
+      } else if (h === me) exitRunnerView(h.lastRunObj);
+    }
   });
   if (!me.alive) { /* waiting to respawn */ } else $('banner').classList.add('hidden');
   world.applyMovers(m.m);
@@ -551,6 +706,8 @@ function applySnapshot(m) {
     if (h === me) onLocalEat(o);
   }
   for (const [victim, eater] of m.k) onHoleEaten(holes[eater], holes[victim]);
+  for (const [id, on] of m.gl || []) world.setGlow(world.byId.get(id), !!on);
+  for (const [idx, ok, amount, by] of m.rv || []) onRunnerResult(holes[idx], !!ok, amount, by >= 0 ? holes[by] : null);
 }
 
 function guestSend(ix, iz, dt) {
@@ -561,6 +718,7 @@ function guestSend(ix, iz, dt) {
 }
 
 function backToMenu() {
+  for (const h of holes) cleanupRunner(h);
   leaveRoom();
   state = 'menu';
   for (const h of holes) if (h.human) h.kill();
@@ -634,6 +792,7 @@ document.addEventListener('touchend', (e) => {
 }, { passive: false });
 
 function playerInput() {
+  if (me.mode === 'runner') return runnerInput();
   let dx = 0, dz = 0;
   if (keys.has('KeyW') || keys.has('ArrowUp')) dz -= 1;
   if (keys.has('KeyS') || keys.has('ArrowDown')) dz += 1;
@@ -657,7 +816,7 @@ function botThink(b) {
   // pick the juiciest eatable thing nearby
   let best = null, bestScore = -1;
   world.query(b.x, b.z, 42, (o) => {
-    if (o.state !== 0 || b.r < o.need) return;
+    if (o.state !== 0 || b.r < o.need || o.glow) return; // glowing people are for the humans
     if (o.kind === 'plane' && o.py > 1.5) return;
     const d = Math.hypot(o.x - b.x, o.z - b.z);
     const s = (o.pts + 8) / (d + 6) * rand(0.8, 1.25) * (o.kind === 'person' ? 0.7 : 1);
@@ -683,9 +842,14 @@ function botUpdate(b, dt) {
     let prey = null, pd = 16;
     b.cool -= dt;
     for (const o of holes) {
-      if (o === b || !o.alive) continue;
-      const d = Math.hypot(o.x - b.x, o.z - b.z);
-      if (b.r > o.r * 1.45 && d < pd) { prey = o; pd = d; }
+      if (o === b) continue;
+      if (o.alive) {
+        const d = Math.hypot(o.x - b.x, o.z - b.z);
+        if (b.r > o.r * 1.45 && d < pd) { prey = o; pd = d; }
+      } else if (o.mode === 'runner') { // a pedestrian running for their life is fair game
+        const d = Math.hypot(o.x - b.x, o.z - b.z);
+        if (d < 24 && d < pd + 8) { prey = o; pd = d; }
+      }
     }
     if (prey && b.cool <= 0) {
       b.hunt += dt;
@@ -734,13 +898,16 @@ function swallow(h) {
   world.query(h.x, h.z, h.r, (o) => {
     if (o.state !== 0 || h.r < o.need) return;
     if (o.kind === 'plane' && o.py > 1.5) return; // only aircraft on the ground
+    if (o.glow && !h.human) return; // glowing people are reserved for the human players
     const d = Math.hypot(o.x - h.x, o.z - h.z);
     if (d < Math.max(0.15, h.r * 0.9 - o.r * 0.35)) {
+      if (o.glow) { startRunner(h, o); return; } // swallow a glowing person: swap places with them
       world.startFall(o, h);
       h.score += h.human ? o.pts : o.pts * 0.5; // bots are deliberately slower growers
       h.pulse = 1;
       if (role === 'host') { const e = [o.id, holes.indexOf(h)]; evOut.push(e); roundLog.eaten.push(o.id); }
       if (h === me) onLocalEat(o);
+      if (o.controlledBy !== undefined) endRunner(holes[o.controlledBy], false, h); // a runner got caught
     }
   });
 }
@@ -761,7 +928,7 @@ function holeVsHole() {
   for (const a of holes) {
     if (!a.alive) continue;
     for (const b of holes) {
-      if (a === b || !b.alive) continue;
+      if (a === b || !b.alive || b.shield > 0) continue;
       if (a.r > b.r * 1.15 && Math.hypot(a.x - b.x, a.z - b.z) < a.r * 0.85 - b.r * 0.25) {
         a.score += 50 + b.score * 0.5;
         a.pulse = 1;
@@ -785,6 +952,12 @@ let hudTimer = 0;
 const inMatch = (h) => h !== human1 || (role !== 'solo' && (role === 'guest' || (link && link.connected)) && (h.alive || h.score > 0 || h.respawn > 0));
 
 function updateHud() {
+  if (me.mode === 'runner') {
+    $('runner-t').textContent = Math.max(0, Math.ceil(me.runT));
+    let dmin = 99;
+    for (const h of holes) if (h.alive) dmin = Math.min(dmin, Math.hypot(h.x - me.x, h.z - me.z) - h.r);
+    $('danger').style.opacity = clamp(1 - dmin / 24, 0, 0.9);
+  }
   $('score').textContent = Math.floor(me.score).toLocaleString();
   $('size').textContent = me.r.toFixed(1) + ' m';
   const t = Math.max(0, Math.ceil(timeLeft));
@@ -802,7 +975,37 @@ function row(h, i) {
   return `<li class="${h === me ? 'me' : ''}"><span class="rk">${i + 1}</span><span class="dot" style="background:${h.cssColor}"></span><span class="nm">${escapeHtml(h.name)}</span><span class="sc">${Math.floor(h.score).toLocaleString()}</span></li>`;
 }
 
+// runner mode: a heading-up radar centred on you, showing every black hole (red = danger)
+function drawRadar() {
+  const W = mm.width, c = W / 2, R = c - 6, range = 75, s = R / range;
+  mmc.clearRect(0, 0, W, W);
+  mmc.save();
+  mmc.beginPath(); mmc.arc(c, c, R, 0, 6.283); mmc.clip();
+  mmc.fillStyle = 'rgba(14,22,34,0.82)'; mmc.fillRect(0, 0, W, W);
+  mmc.strokeStyle = 'rgba(255,255,255,0.18)'; mmc.lineWidth = 2;
+  for (const f of [0.33, 0.66]) { mmc.beginPath(); mmc.arc(c, c, R * f, 0, 6.283); mmc.stroke(); }
+  const fx = Math.sin(me.yaw), fz = Math.cos(me.yaw);
+  for (const h of holes) {
+    if (!h.alive) continue;
+    const dx = h.x - me.x, dz = h.z - me.z;
+    let px = (-dx * fz + dz * fx), py = -(dx * fx + dz * fz); // right / up on the radar (world units)
+    const d = Math.hypot(px, py);
+    const far = d > range * 0.95;
+    if (far) { px = px / d * range * 0.95; py = py / d * range * 0.95; }
+    const r = far ? 5 : Math.max(5, h.r * s);
+    mmc.beginPath(); mmc.arc(c + px * s, c + py * s, r, 0, 6.283);
+    mmc.fillStyle = far ? 'rgba(255,90,90,0.55)' : 'rgba(255,70,70,0.7)'; mmc.fill();
+    mmc.lineWidth = 2; mmc.strokeStyle = h.cssColor; mmc.stroke();
+  }
+  mmc.restore();
+  mmc.fillStyle = '#fff'; // you, facing up
+  mmc.beginPath(); mmc.moveTo(c, c - 12); mmc.lineTo(c + 8, c + 9); mmc.lineTo(c - 8, c + 9); mmc.closePath(); mmc.fill();
+  mmc.strokeStyle = 'rgba(255,255,255,0.5)'; mmc.lineWidth = 3;
+  mmc.beginPath(); mmc.arc(c, c, R, 0, 6.283); mmc.stroke();
+}
+
 function drawMinimap() {
+  if (me.mode === 'runner') { drawRadar(); return; }
   const W = mm.width, s = W / (WORLD * 2);
   mmc.clearRect(0, 0, W, W);
   mmc.fillStyle = 'rgba(20,28,40,0.55)';
@@ -816,6 +1019,8 @@ function drawMinimap() {
     mmc.fillStyle = h.cssColor; mmc.fill();
     if (h === me) { mmc.lineWidth = 2; mmc.strokeStyle = '#fff'; mmc.stroke(); }
   }
+  mmc.fillStyle = '#ffe066'; // glowing people
+  for (const o of world.glowSet) { mmc.beginPath(); mmc.arc((o.x + WORLD) * s, (o.z + WORLD) * s, 3.2, 0, 6.283); mmc.fill(); }
 }
 
 function updateTags() {
@@ -834,19 +1039,32 @@ function updateTags() {
 const clock = new THREE.Clock();
 let t = 0;
 let lastShadowSize = 0;
+let fpsBob = 0;
 let perfTime = -3, perfFrames = 0; // negative start = grace period while assets/shaders warm up
 
 function hostFrame(dt) {
   if (state === 'playing') {
     if (human0.alive) { const [ix, iz] = playerInput(); human0.move(ix, iz, dt); }
-    if (role === 'host' && human1.alive) {
+    else if (human0.mode === 'runner') { const [f, tn] = playerInput(); runnerStep(human0, f, tn, dt); }
+    if (role === 'host') {
       const stale = performance.now() - guestInput.t > 1000;
-      human1.move(stale ? 0 : guestInput.x, stale ? 0 : guestInput.z, dt);
+      if (human1.alive) human1.move(stale ? 0 : guestInput.x, stale ? 0 : guestInput.z, dt);
+      else if (human1.mode === 'runner') runnerStep(human1, stale ? 0 : guestInput.x, stale ? 0 : guestInput.z, dt); // x = forward, z = turn
     }
     timeLeft -= dt;
     if (timeLeft <= 0) { timeLeft = 0; endGame(); }
   }
   for (const b of bots) if (b.alive) botUpdate(b, dt);
+
+  for (const h of holes) {
+    if (h.shield > 0) h.shield -= dt;
+    if (h.mode === 'runner') {
+      syncRunnerObject(h);
+      h.runT -= dt;
+      if (h.runT <= 0) endRunner(h, true);
+    }
+  }
+  if (state === 'playing') world.maintainGlow(dt);
 
   for (const h of holes) {
     if (!h.alive) continue;
@@ -884,7 +1102,12 @@ function guestFrame(dt) {
   timeLeft = Math.max(0, timeLeft - dt);
   let ix = 0, iz = 0;
   if (me.alive) { [ix, iz] = playerInput(); me.move(ix, iz, dt); }
+  else if (me.mode === 'runner') { [ix, iz] = playerInput(); runnerStep(me, ix, iz, dt); } // sent as forward / turn
   guestSend(ix, iz, dt);
+  if (me.mode === 'runner') { // prediction: gently follow the host's authoritative position
+    const ex = me.sx - me.x, ez = me.sz - me.z;
+    if (Math.hypot(ex, ez) > 6) { me.x = me.sx; me.z = me.sz; } else { const k = Math.min(1, dt * 3); me.x += ex * k; me.z += ez * k; }
+  }
 
   for (const h of holes) {
     if (!h.alive) continue;
@@ -919,6 +1142,7 @@ function frame() {
     perfTime = 0; perfFrames = 0;
   }
 
+  if (window.innerWidth !== sizedW || window.innerHeight !== sizedH) resize(); // also catches panes/tabs that gain size after load
   if (role === 'guest') guestFrame(dt); else hostFrame(dt);
 
   // --- visuals ---
@@ -928,24 +1152,39 @@ function frame() {
     else world.uHoles[i].set(0, 0, 0);
   }
 
-  // camera follows the local player (or the current leader while in menu / game over)
-  if (state === 'playing') camSubject = me; // stays put while respawning
-  else if (!camSubject.alive || camSubject.human) {
-    camSubject = bots.filter((b) => b.alive).sort((a, b) => b.score - a.score)[0] || bots[0];
+  world.updateGlow(t);
+  const fpsView = state === 'playing' && me.mode === 'runner';
+  let shadowH;
+  if (fpsView) {
+    // first person: eye height, looking where you are heading
+    if (me.runObj) me.runObj.mesh.visible = false;
+    fpsBob += dt * Math.abs(me.rv) * 1.1;
+    camera.position.set(me.x, 1.7 + Math.sin(fpsBob * 9) * 0.05, me.z);
+    camera.lookAt(me.x + Math.sin(me.yaw) * 10, 1.3, me.z + Math.cos(me.yaw) * 10);
+    cam.x = me.x; cam.z = me.z; cam.r = me.r;
+    scene.fog.near = 120; scene.fog.far = 430;
+    shadowH = 40;
+  } else {
+    // camera follows the local player (or the current leader while in menu / game over)
+    if (state === 'playing') camSubject = me; // stays put while respawning
+    else if (!camSubject.alive || camSubject.human) {
+      camSubject = bots.filter((b) => b.alive).sort((a, b) => b.score - a.score)[0] || bots[0];
+    }
+    const sub = camSubject;
+    if (sub) {
+      const k = Math.min(1, dt * 5);
+      cam.x += (sub.x - cam.x) * k; cam.z += (sub.z - cam.z) * k;
+      cam.r += (sub.r - cam.r) * Math.min(1, dt * 2.5);
+    }
+    viewCur += (viewMul - viewCur) * Math.min(1, dt * 3);
+    scene.fog.near = 140 * viewCur; scene.fog.far = 460 * viewCur;
+    const H = (12 + cam.r * 4.3) * viewCur, Bk = H * 0.42;
+    camera.position.set(cam.x, H, cam.z + Bk);
+    camera.lookAt(cam.x, 0, cam.z - cam.r * 0.15);
+    shadowH = H;
   }
-  const sub = camSubject;
-  if (sub) {
-    const k = Math.min(1, dt * 5);
-    cam.x += (sub.x - cam.x) * k; cam.z += (sub.z - cam.z) * k;
-    cam.r += (sub.r - cam.r) * Math.min(1, dt * 2.5);
-  }
-  viewCur += (viewMul - viewCur) * Math.min(1, dt * 3);
-  scene.fog.near = 140 * viewCur; scene.fog.far = 460 * viewCur;
-  const H = (12 + cam.r * 4.3) * viewCur, Bk = H * 0.42;
-  camera.position.set(cam.x, H, cam.z + Bk);
-  camera.lookAt(cam.x, 0, cam.z - cam.r * 0.15);
 
-  const ss = Math.round((H * 1.25 + 14) / 4) * 4;
+  const ss = Math.round((shadowH * 1.25 + 14) / 4) * 4;
   sun.position.set(cam.x + SUN_DIR.x * 160, SUN_DIR.y * 160, cam.z + SUN_DIR.z * 160);
   sun.target.position.set(cam.x, 0, cam.z);
   if (ss !== lastShadowSize) {
@@ -1000,7 +1239,7 @@ frame();
 
 // handy for debugging / automated checks
 window.__game = {
-  world, holes, bots, human0, human1, camera, scene, renderer, endGame, music, toggleMusic, startSolo, startHosting, startJoining,
+  world, holes, bots, human0, human1, camera, scene, renderer, endGame, music, toggleMusic, startRunner, endRunner, startSolo, startHosting, startJoining,
   get me() { return me; }, get role() { return role; }, get state() { return state; }, get link() { return link; },
   get timeLeft() { return timeLeft; },
 };
